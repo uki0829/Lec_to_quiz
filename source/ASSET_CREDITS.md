@@ -12,3 +12,8 @@ Color illustrations: Microsoft Fluent Emoji, official microsoft/fluentui-emoji r
 - cheatsheet: https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Spiral%20notepad/3D/spiral_notepad_3d.png
 
 - Rename folder: Lucide Pencil SVG, https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/pencil.svg
+
+- Flashcard controls: official Lucide star.svg and lightbulb.svg, https://github.com/lucide-icons/lucide/tree/main/icons
+
+- Quiz audio control: official Lucide volume-2.svg and volume-x.svg, https://lucide.dev/icons/volume-2 and https://lucide.dev/icons/volume-x.
+- Correct/incorrect feedback sounds: original synthesized sine tones using browser Web Audio; no external recordings.

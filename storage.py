@@ -63,6 +63,12 @@ class Store:
                     quiz_id TEXT NOT NULL, source_id TEXT NOT NULL, PRIMARY KEY(quiz_id,source_id));
                 CREATE TABLE IF NOT EXISTS quiz_collections (quiz_id TEXT PRIMARY KEY, collection_id TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS vector_cleanup (id TEXT PRIMARY KEY);
+                CREATE TABLE IF NOT EXISTS starred_questions (
+                    quiz_id TEXT NOT NULL, question_id TEXT NOT NULL, created REAL NOT NULL,
+                    PRIMARY KEY(quiz_id,question_id));
+                CREATE TABLE IF NOT EXISTS question_hints (
+                    quiz_id TEXT NOT NULL, question_id TEXT NOT NULL, hint TEXT NOT NULL,
+                    created REAL NOT NULL, PRIMARY KEY(quiz_id,question_id));
             """)
             for row in db.execute('SELECT m.* FROM materials m LEFT JOIN material_collections c ON c.material_id=m.id WHERE c.material_id IS NULL').fetchall():
                 cid = uid()
@@ -189,8 +195,16 @@ class Store:
         row = self.one("SELECT * FROM quizzes WHERE id=?", (quiz_id,))
         if not row:
             return None
+        body = json.loads(row['body'])
+        stars = {r['question_id'] for r in self.all('SELECT question_id FROM starred_questions WHERE quiz_id=?', (quiz_id,))}
+        hints = {r['question_id']: r['hint'] for r in self.all('SELECT question_id,hint FROM question_hints WHERE quiz_id=?', (quiz_id,))}
+        for question in body.get('questions', []):
+            if 'id' not in question:
+                continue
+            question.update(starred=question['id'] in stars, hint=hints.get(question['id']),
+                            originQuizId=quiz_id, originQuestionId=question['id'])
         owner = self.one('SELECT collection_id FROM quiz_collections WHERE quiz_id=?', (quiz_id,))
-        return {**json.loads(row["body"]), "collectionId": owner['collection_id'] if owner else self.collection_for(row['material_id']),
+        return {**body, "collectionId": owner['collection_id'] if owner else self.collection_for(row['material_id']),
                 "request": self.quiz_request(quiz_id), "progress": json.loads(row["progress"])}
 
     def recover_interrupted_jobs(self):

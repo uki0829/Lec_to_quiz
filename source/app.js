@@ -35,17 +35,87 @@ $('#files').onchange=e=>{addFiles(e.target.files);e.target.value='';};
 ['dragenter','dragover'].forEach(t=>$('#drop').addEventListener(t,e=>{e.preventDefault();$('#drop').classList.add('drag');}));['dragleave','drop'].forEach(t=>$('#drop').addEventListener(t,e=>{e.preventDefault();$('#drop').classList.remove('drag');if(t==='drop')addFiles(e.dataTransfer.files);}));
 $('#reset-material').onclick=()=>{if(busy)return;attachments=[];$('#notes').value='';materialId=null;materialDirty=true;$('#saved-materials').value='';$('#material-summary').innerHTML='';listFiles();message('');saveSnapshot();};
 document.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>{format=b.dataset.format;document.querySelectorAll('[data-format]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(typeof updateComposerState==='function')updateComposerState();});
-function startQuiz(q){quiz=q;index=q.progress?.index||0;answers=q.progress?.answers||{};$('#saved-quizzes').value=q.id||'';$('#empty').hidden=true;$('#summary').hidden=true;$('#study').hidden=q.format==='cheatsheet';$('#cheatsheet').hidden=q.format!=='cheatsheet';$('#sample-context').hidden=q.mode!=='sample';$('#mode-badge').textContent=q.mode==='sample'?(q.format==='cheatsheet'?'Sample sheet':'Sample quiz'):q.mode==='imported'?(q.format==='cheatsheet'?'Imported sheet':'Imported quiz'):q.format==='cheatsheet'?'AI-generated sheet':'AI-generated quiz';$('#mode-badge').className='badge'+(q.mode==='sample'?' sample-badge':'');$('#quiz-title').textContent=q.title;if(typeof updateQuizContext==='function')updateQuizContext(q);render();}
+function startQuiz(q){quiz=q;index=q.progress?.index||0;answers=q.progress?.answers||{};$('#saved-quizzes').value=q.id||'';$('#empty').hidden=true;$('#summary').hidden=true;$('#study').hidden=q.format==='cheatsheet';$('#cheatsheet').hidden=q.format!=='cheatsheet';$('#sample-context').hidden=q.mode!=='sample';$('#mode-badge').textContent=q.mode==='sample'?(q.format==='cheatsheet'?'Sample sheet':'Sample quiz'):q.mode==='imported'?(q.format==='cheatsheet'?'Imported sheet':'Imported quiz'):'';$('#mode-badge').hidden=!['sample','imported'].includes(q.mode);$('#mode-badge').className='badge'+(q.mode==='sample'?' sample-badge':'');$('#quiz-title').textContent=q.title;if(typeof updateQuizContext==='function')updateQuizContext(q);hideFlashcardAnswer();render();}
 function sampleQuiz(){if(format==='cheatsheet'){message('Authored sample set.');return startQuiz(sampleSheet());}const q={title:'Gradient descent, one step at a time',description:({mcq:'Choose an answer, then check the reasoning.',flashcard:'Recall first. Reveal when you are ready.',calculation:'Work it out, then enter a numeric answer.'})[format],questions:structuredClone(samples[format]),mode:'sample',format};message('Authored sample set.');startQuiz(q);}
 $('#top-sample').onclick=$('#empty-sample').onclick=sampleQuiz;
 function sourceHtml(q){return '<details class="source-ref"><summary>Source: '+esc(q.source.name)+' · '+esc(q.source.locator)+'</summary><blockquote>'+esc(q.source.quote)+'</blockquote><button class="quiet source-open" data-source="'+esc(q.source.id||'sample')+'">Open source material</button></details>';}
-function feedbackHtml(q,a){const heading=q.type==='flashcard'?'Explanation':a.correct?'That’s correct.':'Let’s work through it.';return '<div class="feedback '+(q.type==='flashcard'?'':a.correct?'good':'bad')+'"><h5>'+heading+'</h5><p>'+esc(q.explanation)+'</p>'+(q.type==='calculation'?'<p style="margin-top:9px"><strong>Answer: '+esc(q.answer)+'</strong></p>':'')+(q.steps?.length?'<ol>'+q.steps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>':'')+'</div>';}
-function render(){if(!quiz)return;if(quiz.format==='cheatsheet')return renderCheatSheet();const q=quiz.questions[index],a=answers[q.id]||{};$('#question-nav').innerHTML=quiz.questions.map((x,i)=>'<button class="q-dot '+(i===index?'current ':'')+(answers[x.id]?.submitted?(answers[x.id].correct?'done':'missed'):'')+'" data-index="'+i+'" '+(i===index?'aria-current="step"':'')+' aria-label="Question '+(i+1)+'">'+(i+1)+'</button>').join('');$('#question-nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{index=Number(b.dataset.index);render();});const done=Object.values(answers).filter(x=>x.submitted).length;$('#progress-bar').style.width=done/quiz.questions.length*100+'%';let html='<div class="question-meta"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><span>'+({mcq:'Multiple choice',flashcard:'Flashcard',calculation:'Calculation'})[q.type]+'</span></div><h4 tabindex="-1" id="question-prompt">'+esc(q.prompt)+'</h4>';
-if(q.type==='mcq'){html+='<div class="options" role="group" aria-label="Answer options">'+q.options.map((x,i)=>'<button class="option '+(a.selected===i?'selected ':'')+(a.submitted?(i===q.correctIndex?'correct':a.selected===i?'wrong':''):'')+'" data-answer="'+i+'" aria-pressed="'+String(a.selected===i)+'" '+(a.submitted?'disabled':'')+'><span class="letter">'+String.fromCharCode(65+i)+'</span><span>'+esc(x)+'</span></button>').join('')+'</div>';if(!a.submitted)html+='<div class="question-actions"><span></span><button class="primary" id="check" '+(a.selected===undefined?'disabled':'')+'>Check answer</button></div>';}
+function flashIcon(name){return '<img class="icon" src="/static/icons/'+name+'.svg" alt="" aria-hidden="true">';}
+function feedbackHtml(q,a){const heading=q.type==='flashcard'?'Explanation':a.skipped?'Answer':a.correct?'That’s correct.':'Let’s work through it.';return '<div class="feedback '+(q.type==='flashcard'?'':a.correct?'good':'bad')+'"><h5>'+heading+'</h5><p>'+esc(q.explanation)+'</p>'+(q.type==='calculation'?'<p style="margin-top:9px"><strong>Answer: '+esc(q.answer)+'</strong></p>':'')+(q.steps?.length?'<ol>'+q.steps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>':'')+'</div>';}
+let answerAudioContext=null,answerSoundEnabled=true,answerSoundEpoch=0;
+try{answerSoundEnabled=localStorage.getItem('lecture-lab-sound')!=='off';}catch{}
+function setAnswerSound(enabled){
+  answerSoundEnabled=enabled;answerSoundEpoch++;
+  try{localStorage.setItem('lecture-lab-sound',enabled?'on':'off');}catch{}
+}
+async function playAnswerSound(correct){
+  if(!answerSoundEnabled)return false;
+  const epoch=answerSoundEpoch;
+  try{
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    if(!Audio)return false;
+    if(!answerAudioContext||answerAudioContext.state==='closed')answerAudioContext=new Audio();
+    if(answerAudioContext.state==='suspended')await answerAudioContext.resume();
+    if(!answerSoundEnabled||epoch!==answerSoundEpoch)return false;
+    const start=answerAudioContext.currentTime+.005;
+    const notes=correct?[[523.25,0,.12],[659.25,.09,.12],[783.99,.18,.17]]:[[196,0,.13],[146.83,.12,.18]];
+    for(const [frequency,offset,duration] of notes){
+      const oscillator=answerAudioContext.createOscillator(),gain=answerAudioContext.createGain();
+      oscillator.type='sine';oscillator.frequency.setValueAtTime(frequency,start+offset);
+      gain.gain.setValueAtTime(0,start+offset);
+      gain.gain.linearRampToValueAtTime(.07,start+offset+.012);
+      gain.gain.exponentialRampToValueAtTime(.001,start+offset+duration);
+      oscillator.connect(gain);gain.connect(answerAudioContext.destination);
+      oscillator.start(start+offset);oscillator.stop(start+offset+duration+.015);
+      oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+    }
+    return true;
+  }catch{return false;}
+}
+function submitChoice(choice,skipped=false){
+  const q=quiz?.questions?.[index];
+  if(q?.type!=='mcq'||answers[q.id]?.submitted)return;
+  if(!skipped&&(!Number.isInteger(choice)||choice<0||choice>=q.options.length))return;
+  const correct=!skipped&&choice===q.correctIndex;
+  answers[q.id]={selected:skipped?null:choice,submitted:true,correct,...(skipped?{skipped:true}:{})};
+  if(!skipped)playAnswerSound(correct);
+  render();$('#quiz-feedback')?.focus();
+}
+function renderQuizProgress(){
+  const target=$('#quiz-progress');target.hidden=quiz.questions[index].type!=='mcq';
+  if(target.hidden)return;
+  const completed=quiz.questions.filter(q=>answers[q.id]?.submitted).length;
+  target.innerHTML='<span class="quiz-progress-count" aria-label="'+completed+' completed">'+completed+'</span><div class="quiz-segments">'+
+    quiz.questions.map((q,i)=>'<button class="quiz-segment '+(answers[q.id]?.submitted?(answers[q.id].correct?'is-correct':'is-wrong'):'')+' '+(i===index?'is-current':'')+'" data-quiz-index="'+i+'" aria-label="Question '+(i+1)+(answers[q.id]?.submitted?(answers[q.id].correct?', correct':', needs practice'):', unanswered')+'" '+(i===index?'aria-current="step"':'')+'><span></span></button>').join('')+
+    '</div><span class="quiz-progress-total" aria-label="'+quiz.questions.length+' questions">'+quiz.questions.length+'</span>';
+  target.querySelectorAll('[data-quiz-index]').forEach(button=>button.onclick=()=>goToQuestion(Number(button.dataset.quizIndex)));
+}
+function render(){if(!quiz)return;if(quiz.format==='cheatsheet')return renderCheatSheet();const q=quiz.questions[index],a=answers[q.id]||{};renderQuizProgress();$('#question-nav').innerHTML=quiz.questions.map((x,i)=>'<button class="q-dot '+(i===index?'current ':'')+(answers[x.id]?.submitted?(answers[x.id].correct?'done':'missed'):'')+'" data-index="'+i+'" '+(i===index?'aria-current="step"':'')+' aria-label="Question '+(i+1)+'">'+(i+1)+'</button>').join('');$('#question-nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{goToQuestion(Number(b.dataset.index));});const done=Object.values(answers).filter(x=>x.submitted).length;$('#progress-bar').style.width=done/quiz.questions.length*100+'%';let html='<div class="question-meta"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><span>'+({mcq:'Multiple choice',flashcard:'Flashcard',calculation:'Calculation'})[q.type]+'</span></div><h4 tabindex="-1" id="question-prompt">'+esc(q.prompt)+'</h4>';
+if(q.type==='mcq'){
+  html='<div class="quiz-card-toolbar"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><button id="quiz-sound" class="quiz-sound" aria-label="'+(answerSoundEnabled?'Mute sounds':'Enable sounds')+'" aria-pressed="'+answerSoundEnabled+'" title="'+(answerSoundEnabled?'Sounds on':'Sounds off')+'">'+flashIcon(answerSoundEnabled?'volume-2':'volume-x')+'</button></div><h4 tabindex="-1" id="question-prompt">'+esc(q.prompt)+'</h4>'+
+    '<p class="quiz-answer-label">'+(a.submitted?a.skipped?'Answer revealed':a.correct?'Correct!':'Not quite.':'Choose an answer')+'</p><div class="options" role="group" aria-label="Answer options">'+
+    q.options.map((x,i)=>'<button class="option '+(a.selected===i?'selected ':'')+(a.submitted?(i===q.correctIndex?'correct':a.selected===i?'wrong':''):'')+'" data-answer="'+i+'" aria-pressed="'+String(a.selected===i)+'" '+(a.submitted?'disabled':'')+'><span class="letter">'+(i+1)+'</span><span class="option-text">'+esc(x)+'</span>'+(a.submitted&&i===q.correctIndex?'<span class="answer-state">'+flashIcon('check')+'<span class="sr-only">Correct answer</span></span>':a.submitted&&a.selected===i?'<span class="answer-state">'+flashIcon('x')+'<span class="sr-only">Your answer, incorrect</span></span>':'')+'</button>').join('')+'</div>'+
+    (!a.submitted?'<div class="quiz-bottom-actions"><button class="quiz-skip" id="quiz-skip">Don’t know?</button></div>':'');
+}
+
 if(q.type==='calculation'){html+='<label class="sr-only" for="number-answer">Your numeric answer</label><div class="numeric-row"><input class="field" id="number-answer" inputmode="decimal" placeholder="Your numeric answer" value="'+esc(a.value||'')+'" '+(a.submitted?'disabled':'')+'><button class="primary" id="check" '+(a.submitted?'hidden':'')+'>Check</button></div><p class="unit">Enter a number. Absolute tolerance: '+esc(q.tolerance)+'.</p><div id="answer-message" role="status" class="tiny"></div><details class="hint"><summary>Need a starting point?</summary><p>Substitute given values into the relevant formula.</p></details>';}
-if(q.type==='flashcard'){html+=a.revealed?'<div class="flash-answer">'+esc(q.answer)+'</div>':'<button id="reveal" class="flash-stage"><span><img class="icon" src="/static/icons/layers.svg" alt=""><strong>Reveal answer</strong></span></button>';if(a.revealed&&!a.submitted)html+='<div class="question-actions"><button class="secondary" id="again">Practice again</button><button class="primary" id="known">I knew this</button></div>';}
-if(a.submitted||(q.type==='flashcard'&&a.revealed))html+=feedbackHtml(q,a)+sourceHtml(q);$('#question').innerHTML=html;$('#previous').disabled=index===0;$('#next').textContent=index===quiz.questions.length-1?'Review session':'Next question';
-$('#question').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{answers[q.id]={selected:Number(b.dataset.answer)};render();$('#question').querySelector('[data-answer="'+b.dataset.answer+'"]')?.focus();});if($('#check'))$('#check').onclick=()=>{if(q.type==='mcq')answers[q.id]={...a,submitted:true,correct:a.selected===q.correctIndex};else{const value=$('#number-answer').value.trim();const result=gradeNumeric(value,q.numericAnswer,q.tolerance);if(result===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}answers[q.id]={value,submitted:true,correct:result};}render();};document.querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));scheduleSave();if($('#number-answer'))$('#number-answer').oninput=e=>{answers[q.id]={...answers[q.id],value:e.target.value};scheduleSave();};if($('#number-answer'))$('#number-answer').onkeydown=e=>{if(e.key==='Enter')$('#check')?.click();};if($('#reveal'))$('#reveal').onclick=()=>{answers[q.id]={revealed:true};render();};for(const [id,correct] of [['known',true],['again',false]])if($('#'+id))$('#'+id).onclick=()=>{answers[q.id]={revealed:true,submitted:true,correct};render();};}
+if(q.type==='flashcard'){
+  const origin=q.originQuizId||quiz.id,eligible=Boolean(origin&&(quiz.mode==='generated'||quiz.mode==='bank'));
+  const starred=typeof isQuestionStarred==='function'?isQuestionStarred(q):Boolean(q.starred);
+  const hintShown=Boolean(a.hintVisible&&q.hint);
+  html='<div class="flashcard-shell"><div class="flashcard-toolbar"><button id="flash-hint" class="flash-hint" '+(!eligible||q.hintLoading?'disabled':'')+' aria-expanded="'+hintShown+'">'+flashIcon('lightbulb')+(q.hintLoading?'Getting hint…':hintShown?'Hide hint':'Get a hint')+'</button><button id="flash-star" class="flash-star '+(starred?'is-starred':'')+'" aria-label="'+(starred?'Unstar card':'Star card')+'" aria-pressed="'+starred+'" title="'+(eligible?'Save to question bank':'Save a generated card')+'" '+(!eligible||q.starLoading?'disabled':'')+'>'+flashIcon(starred?'star-filled':'star')+'</button></div>'+(hintShown?'<div class="flash-hint-text" role="status">'+esc(q.hint)+'</div>':'')+'<button id="flash-flip" class="flash-flip '+(a.revealed?'answer-face':'')+'" aria-label="'+(a.revealed?'Show question':'Show answer')+'" aria-describedby="question-prompt"><span id="question-prompt" class="flash-card-text">'+esc(a.revealed?q.answer:q.prompt)+'</span></button></div>';
+  if(a.revealed){
+    if(!a.submitted)html+='<div class="flash-recall"><button class="secondary" id="again">Practice again</button><button class="primary" id="known">I knew this</button></div>';
+    html+='<details class="flash-explanation"><summary>Explanation</summary>'+feedbackHtml(q,a)+sourceHtml(q)+'</details>';
+  }
+}
+if(q.type!=='flashcard'&&a.submitted)html+=(q.type==='mcq'?'<div id="quiz-feedback" tabindex="-1" role="status">':'')+feedbackHtml(q,a)+sourceHtml(q)+(q.type==='mcq'?'</div>':'');
+$('#question').setAttribute('data-type',q.type);$('#study').setAttribute('data-format',q.type);
+$('#question').innerHTML=html;$('#previous').disabled=index===0;
+$('#previous').innerHTML=flashIcon('arrow-left')+(q.type==='flashcard'?'Back':'Previous');
+$('#next').innerHTML=(q.type==='flashcard'?'Continue':'Next')+flashIcon('arrow-right');$('#next').title=index===quiz.questions.length-1?'View results':'Next question';
+$('#flash-position').hidden=q.type!=='flashcard';$('#flash-position').textContent=(index+1)+' / '+quiz.questions.length;
+
+$('#question').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>submitChoice(Number(b.dataset.answer)));if($('#quiz-skip'))$('#quiz-skip').onclick=()=>submitChoice(null,true);if($('#quiz-sound'))$('#quiz-sound').onclick=()=>{setAnswerSound(!answerSoundEnabled);render();$('#quiz-sound').focus();};if($('#check'))$('#check').onclick=()=>{if(q.type==='mcq')answers[q.id]={...a,submitted:true,correct:a.selected===q.correctIndex};else{const value=$('#number-answer').value.trim();const result=gradeNumeric(value,q.numericAnswer,q.tolerance);if(result===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}answers[q.id]={value,submitted:true,correct:result};}render();};document.querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));scheduleSave();if($('#number-answer'))$('#number-answer').oninput=e=>{answers[q.id]={...answers[q.id],value:e.target.value};scheduleSave();};if($('#number-answer'))$('#number-answer').onkeydown=e=>{if(e.key==='Enter')$('#check')?.click();};if($('#flash-flip'))$('#flash-flip').onclick=()=>{answers[q.id]={...answers[q.id],reviewed:true,revealed:!answers[q.id]?.revealed};render();$('#flash-flip').focus();};if($('#flash-hint'))$('#flash-hint').onclick=()=>requestFlashcardHint(q);if($('#flash-star'))$('#flash-star').onclick=()=>toggleQuestionStar(q);for(const [id,correct] of [['known',true],['again',false]])if($('#'+id))$('#'+id).onclick=()=>{answers[q.id]={...answers[q.id],revealed:true,submitted:true,correct};render();};}
 function sampleSheet(){
   return {title:'Gradient descent',format:'cheatsheet',mode:'sample',questions:[],sections:samples.flashcard.map((q,i)=>({id:'s'+i,heading:q.prompt,points:[q.answer],formulas:[],source:q.source}))};
 }
@@ -59,10 +129,50 @@ function renderCheatSheet(){
 }
 $('#sheet-export').onclick=()=>exportQuiz();$('#sheet-print').onclick=()=>window.print();
 function gradeNumeric(value,expected,tolerance){if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value))return null;const n=Number(value);return Number.isFinite(n)?Math.abs(n-expected)<=tolerance+Number.EPSILON*Math.max(1,Math.abs(expected)):null;}
-$('#previous').onclick=()=>{if(index>0){index--;render();}};$('#next').onclick=()=>{if(index<quiz.questions.length-1){index++;render();}else showSummary();};
-function showSummary(){scheduleSave(true);const answered=quiz.questions.filter(q=>answers[q.id]?.submitted),correct=answered.filter(q=>answers[q.id].correct).length;$('#study').hidden=true;$('#summary').hidden=false;$('#summary').innerHTML='<div class="score">'+correct+' / '+quiz.questions.length+'</div><h3>'+ (quiz.format==='flashcard'?'Recall check complete':'Your practice, reviewed')+'</h3><p>'+answered.length+' answered · '+(quiz.questions.length-answered.length)+' not yet answered</p><div class="review-list">'+quiz.questions.map((q,i)=>'<div class="review-row"><strong>Question '+(i+1)+' · '+(!answers[q.id]?.submitted?'Not answered':answers[q.id].correct?'Correct / recalled':'Needs practice')+'</strong>'+esc(q.prompt)+'</div>').join('')+'</div><div class="summary-actions"><button class="primary" id="retry">Practice unfinished or missed</button><button class="secondary" id="back-study">Return to questions</button><button class="secondary" id="summary-export">Export quiz</button></div>';$('#retry').onclick=()=>{const remaining=quiz.questions.filter(q=>!answers[q.id]?.correct);if(!remaining.length){$('#summary').querySelector('p').textContent='All correct. Create another set.';return;}startQuiz({...quiz,id:null,progress:null,questions:remaining,description:'A second pass through the questions that need attention.'});};$('#back-study').onclick=()=>{$('#study').hidden=false;$('#summary').hidden=true;render();};$('#summary-export').onclick=exportQuiz;}
-function exportQuiz(){if(!quiz)return;const payload={title:quiz.title,description:quiz.description,format:quiz.format,mode:quiz.mode,questions:quiz.questions,...(quiz.format==='cheatsheet'?{sections:quiz.sections}:{})};const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=quiz.format==='cheatsheet'?'lecture-lab-cheatsheet.json':'lecture-lab-quiz.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}$('#export').onclick=exportQuiz;
-function validateImported(q){if(q?.format==='cheatsheet')return validateImportedSheet(q);if(!q||typeof q.title!=='string'||q.title.length>180||!Array.isArray(q.questions)||q.questions.length<1||q.questions.length>12)throw Error('Choose a Lecture Lab quiz with 1–12 questions.');const ids=new Set();for(const x of q.questions){if(!x||!['mcq','flashcard','calculation'].includes(x.type)||typeof x.id!=='string'||ids.has(x.id)||typeof x.prompt!=='string'||typeof x.answer!=='string'||typeof x.explanation!=='string'||!x.source||!['name','locator','quote'].every(k=>typeof x.source[k]==='string')||!Array.isArray(x.steps)||!x.steps.every(y=>typeof y==='string'))throw Error('The quiz has missing or invalid question fields.');ids.add(x.id);if(x.type==='mcq'&&(!Array.isArray(x.options)||x.options.length<2||x.options.length>6||!x.options.every(y=>typeof y==='string')||!Number.isInteger(x.correctIndex)||x.correctIndex<0||x.correctIndex>=x.options.length))throw Error('A multiple-choice question has invalid options.');if(x.type==='calculation'&&(!Number.isFinite(x.numericAnswer)||!Number.isFinite(x.tolerance)||x.tolerance<0||x.tolerance>1))throw Error('A calculation question has an invalid numeric answer or tolerance.');}return q;}
+function hideFlashcardAnswer(){
+  const q=quiz?.questions?.[index],a=q&&answers[q.id];
+  if(q?.type==='flashcard'&&a)answers[q.id]={...a,reviewed:!!(a.reviewed||a.revealed||a.submitted),revealed:false};
+}
+function goToQuestion(position){index=position;hideFlashcardAnswer();render();}
+$('#previous').onclick=()=>{if(index>0)goToQuestion(index-1);};
+$('#next').onclick=()=>{if(index<quiz.questions.length-1)goToQuestion(index+1);else showSummary();};
+function showSummary(){
+  scheduleSave(true);
+  const cards=quiz.format==='flashcard',total=quiz.questions.length;
+  const completed=quiz.questions.filter(q=>cards
+    ? answers[q.id]?.reviewed||answers[q.id]?.revealed||answers[q.id]?.submitted
+    : answers[q.id]?.submitted).length;
+  const graded=quiz.questions.filter(q=>answers[q.id]?.submitted);
+  const correct=graded.filter(q=>answers[q.id].correct).length;
+  const remaining=total-completed,percent=Math.round(completed/total*100);
+  const status=q=>{const a=answers[q.id];return a?.skipped?'Skipped':a?.submitted
+    ? a.correct?(cards?'Recalled':'Correct'):(cards?'Practice again':'Incorrect')
+    : cards&&(a?.reviewed||a?.revealed)?'Reviewed':cards?'Not reviewed':'Not answered';};
+  $('#study').hidden=true;$('#summary').hidden=false;
+  $('#summary').innerHTML='<div class="completion-heading"><h2 id="completion-title" tabindex="-1">'+
+    (remaining?'Session summary':cards?'You reviewed every card!':'Practice complete!')+
+    '</h2><span class="completion-mark" aria-hidden="true">'+flashIcon(remaining?'book-open':'check')+'</span></div>'+
+    '<div class="completion-grid"><section class="completion-overview" aria-label="Session progress"><h3>Your progress</h3>'+
+    '<div class="completion-progress"><div class="completion-ring" style="--completion:'+percent+'%" aria-hidden="true"><span>'+percent+'%</span></div>'+
+    '<dl class="completion-counts"><div><dt>Completed</dt><dd>'+completed+'</dd></div><div><dt>Remaining</dt><dd>'+remaining+'</dd></div></dl></div>'+
+    (graded.length?'<p class="completion-score">'+correct+' '+(cards?'recalled':'correct')+' · '+(graded.length-correct)+' '+(cards?'to practice':'incorrect')+'</p>':'')+
+    '</section><section class="completion-next" aria-label="Next steps"><h3>Next steps</h3>'+
+    '<button id="review-restart" class="completion-restart"><span class="restart-icon">'+flashIcon('rotate-ccw')+'</span><span><strong>Restart '+(cards?'flashcards':'quiz')+'</strong><small>'+total+' '+(cards?'cards':'questions')+'</small></span>'+flashIcon('chevron-right')+'</button></section></div>'+
+    '<details class="completion-details"><summary>Question summary</summary><ol class="completion-questions">'+
+    quiz.questions.map(q=>'<li><span>'+esc(q.prompt)+'</span><strong>'+status(q)+'</strong></li>').join('')+'</ol></details>'+
+    '<div class="completion-footer"><button class="completion-back" id="review-previous">'+flashIcon('arrow-left')+'Back to last question</button><button class="completion-home" id="review-next">Home'+flashIcon('arrow-right')+'</button></div>';
+  $('#review-restart').onclick=()=>{
+    index=0;answers={};quiz.progress={index:0,answers:{},review:false};
+    $('#summary').hidden=true;$('#study').hidden=false;render();
+    $('#quiz-title').setAttribute('tabindex','-1');$('#quiz-title').focus();
+  };
+  $('#review-previous').onclick=()=>{$('#study').hidden=false;$('#summary').hidden=true;goToQuestion(total-1);$('#quiz-title').setAttribute('tabindex','-1');$('#quiz-title').focus();};
+  $('#review-next').onclick=()=>$('#back-library').click();
+  $('#completion-title').focus();
+}
+
+function exportQuiz(){if(!quiz)return;const payload={title:quiz.title,description:quiz.description,format:quiz.format,mode:quiz.mode,questions:quiz.questions,...(quiz.format==='cheatsheet'?{sections:quiz.sections}:{})};const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=quiz.format==='cheatsheet'?'lecture-lab-cheatsheet.json':'lecture-lab-quiz.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function validateImported(q){if(q?.format==='cheatsheet')return validateImportedSheet(q);if(!q||typeof q.title!=='string'||q.title.length>180||!Array.isArray(q.questions)||q.questions.length<1||q.questions.length>(q.mode==='bank'?500:12))throw Error('Choose a Lecture Lab quiz with 1–12 questions.');const ids=new Set();for(const x of q.questions){if(!x||!['mcq','flashcard','calculation'].includes(x.type)||typeof x.id!=='string'||ids.has(x.id)||typeof x.prompt!=='string'||typeof x.answer!=='string'||typeof x.explanation!=='string'||!x.source||!['name','locator','quote'].every(k=>typeof x.source[k]==='string')||!Array.isArray(x.steps)||!x.steps.every(y=>typeof y==='string'))throw Error('The quiz has missing or invalid question fields.');ids.add(x.id);if(x.type==='mcq'&&(!Array.isArray(x.options)||x.options.length<2||x.options.length>6||!x.options.every(y=>typeof y==='string')||!Number.isInteger(x.correctIndex)||x.correctIndex<0||x.correctIndex>=x.options.length))throw Error('A multiple-choice question has invalid options.');if(x.type==='calculation'&&(!Number.isFinite(x.numericAnswer)||!Number.isFinite(x.tolerance)||x.tolerance<0||x.tolerance>1))throw Error('A calculation question has an invalid numeric answer or tolerance.');}return q;}
 function validateImportedSheet(q){
   if(typeof q.title!=='string'||!q.title.trim()||q.title.length>180||!Array.isArray(q.sections)||q.sections.length<1||q.sections.length>12)throw Error('Choose a valid Lecture Lab cheat sheet.');
   const ids=new Set();for(const s of q.sections){
@@ -70,5 +180,5 @@ function validateImportedSheet(q){
     ids.add(s.id);
   }return {...q,questions:[]};
 }
-$('#import-btn').onclick=()=>$('#import-file').click();$('#import-file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>1024*1024)throw Error('Import a quiz smaller than 1 MB.');const q=validateImported(JSON.parse(await f.text()));startQuiz({...q,format:q.format||q.questions[0].type,mode:q.mode==='sample'?'sample':'imported'});message('Set imported.');}catch(err){message(err.message,true);}e.target.value='';};
+$('#import-btn').onclick=()=>$('#import-file').click();$('#import-file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>1024*1024)throw Error('Import a quiz smaller than 1 MB.');const raw=JSON.parse(await f.text());const q=validateImported({...raw,mode:raw?.mode==='sample'?'sample':'imported'});startQuiz({...q,format:q.format||q.questions[0].type});message('Set imported.');}catch(err){message(err.message,true);}e.target.value='';};
 window.__lectureLab={samples,gradeNumeric,validateImported,inferRequestedFormat,sampleSheet,validateImportedSheet};

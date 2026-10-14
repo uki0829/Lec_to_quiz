@@ -13,6 +13,10 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class FlashcardHint(StrictModel):
+    hint: str
+
+
 class ExtractedUnit(StrictModel):
     key: str
     text: str

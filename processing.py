@@ -14,6 +14,7 @@ import imageio_ffmpeg
 
 from schemas import validate_quiz, normalize
 from retrieval import Retriever
+from reranking import CohereReranker
 
 
 class Cancelled(Exception):
@@ -63,6 +64,7 @@ class Engine:
     def __init__(self, store, ai):
         self.store, self.ai = store, ai
         self.retriever = Retriever(store, ai)
+        self.reranker = CohereReranker()
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="lecture-job")
 
     def submit(self, job_id):
@@ -265,6 +267,21 @@ class Engine:
         if params.get('followupContext'):
             query = params['followupContext']['request'] + '\nFollow-up: ' + query
         sources = self.retriever.search(cid, mids, query, lambda: self.check(job_id))
+        if self.reranker.api_key and sources:
+            self.stage(job_id, "Ranking lecture passages", 1, 4)
+        sources, ranking = self.reranker.rank(query, sources, lambda: self.check(job_id))
+        self.check(job_id)
+        # Recheck eligibility after the external request, including vector-cleanup/deletion races.
+        sources = [s for s in sources if self.store.one(
+            'SELECT c.id FROM chunks c JOIN materials m ON m.id=c.material_id '
+            'JOIN sources s ON s.id=c.source_id WHERE c.id=? AND c.collection_id=? '
+            "AND c.indexed=1 AND m.status='ready'", (s['id'], cid))]
+        ranking['outputCount'] = len(sources)
+        request = self.store.one('SELECT resolved FROM requests WHERE job_id=?', (job_id,))
+        if request:
+            resolved = json.loads(request['resolved'])
+            self.store.execute('UPDATE requests SET resolved=? WHERE job_id=?',
+                               (json.dumps({**resolved, 'reranking': ranking}), job_id))
         self.store.execute('UPDATE requests SET snapshot=? WHERE job_id=?',
                            (json.dumps([{'chunkId': s['id'], 'sourceId': s['originalSourceId'], 'materialId': s['materialId']} for s in sources]), job_id))
         if not sources:

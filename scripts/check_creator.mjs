@@ -121,3 +121,47 @@ assert.equal(document.querySelector('#delete-folder-dialog').open,true);
 assert.match(document.querySelector('#delete-folder-error').textContent,/changed/);
 run("closeFolderDeletion()");assert.equal(document.querySelector('#delete-folder-dialog').open,false);
 console.log('Folder UI checks passed: dependent-state cleanup, preserved unrelated practice, stale-preview errors, and cancellation.');
+// A bank may contain the same question ID from different saved sets.
+run(`
+busy=false;collectionId='course';currentCollection={id:'course',materials:[]};$('#search-sets').value='';
+bankRows=[{...structuredClone(samples.flashcard[0]),originQuizId:'set-a',originQuestionId:'q0',quizTitle:'Lecture A',starred:true},{...structuredClone(samples.flashcard[1]),originQuizId:'set-b',originQuestionId:'q0',quizTitle:'Lecture B',starred:true}];
+practiceQuestionBank();
+`);
+assert.equal(run('quiz.mode'),'bank');assert.equal(run('quiz.questions.length'),2);
+assert.notEqual(run('quiz.questions[0].id'),run('quiz.questions[1].id'));
+assert.equal(run('cardOrigin(quiz.questions[0]).questionId'),'q0');
+run(`api=async(url,options)=>({starred:JSON.parse(options.body).starred});`);
+await run('toggleQuestionStar(quiz.questions[0])');
+assert.equal(run('bankRows.length'),1);assert.equal(run('isQuestionStarred(quiz.questions[0])'),false);
+await run('toggleQuestionStar(quiz.questions[0])');
+assert.equal(run('bankRows.length'),2);assert.equal(run('isQuestionStarred(quiz.questions[0])'),true);
+run(`let hintCalls=0;api=async()=>{hintCalls++;return {hint:'Think about the direction of the gradient.'}};`);
+await run('requestFlashcardHint(quiz.questions[0])');
+assert.equal(run('answers[quiz.questions[0].id].hintVisible'),true);
+await run('requestFlashcardHint(quiz.questions[0])');
+assert.equal(run('answers[quiz.questions[0].id].hintVisible'),false);assert.equal(run('hintCalls'),1);
+run(`const bankCard=structuredClone(quiz.questions[0]);const bigBank={title:'Question bank',mode:'bank',format:'flashcard',questions:Array.from({length:64},(_,i)=>({...bankCard,id:'bank-'+i}))};validateImported(bigBank);`);
+assert.throws(()=>run(`validateImported({...bigBank,mode:'imported'})`));
+console.log('Question bank checks passed: origin identities, unique practice IDs, star/unstar, cached hint toggling, and 64-card bank restoration.');
+
+// Restart persists an empty session under the same ID and updates the home card.
+run(`
+savedSets=[{id:'restart-set',title:'Saved set',format:'flashcard',questionCount:6,answeredCount:6}];
+quiz={id:'restart-set',title:'Saved set',mode:'generated',format:'flashcard',questions:structuredClone(samples.flashcard)};
+index=5;answers=Object.fromEntries(quiz.questions.map(q=>[q.id,{submitted:true,correct:true,reviewed:true}]));
+let capturedState=null,capturedProgress=null;
+localStorage.setItem=(key,value)=>capturedState=JSON.parse(value);
+api=async(url,options)=>{capturedProgress=JSON.parse(options.body);return {saved:true}};
+showSummary();$('#review-restart').onclick();
+`);
+await new Promise(resolve=>setTimeout(resolve,300));
+assert.deepEqual(JSON.parse(JSON.stringify(run('capturedProgress'))),{index:0,answers:{},review:false});
+assert.equal(run('capturedState.quiz.id'),'restart-set');
+assert.equal(run('capturedState.quiz.progress.review'),false);
+assert.equal(run('savedSets[0].answeredCount'),0);
+run("$('#back-library').onclick();");
+assert.equal(run('currentView'),'library');assert.equal(run('activeLibraryTab'),'sets');
+assert.doesNotMatch(document.querySelector('#quiz-grid').innerHTML,/Continue · 6/);
+run("showSummary();$('#back-library').onclick();");
+assert.equal(run('capturedState.quiz.progress.review'),true);
+console.log('Restart persistence checks passed: unchanged identity, cleared answers/review, current home counts, and Home opens Sets.');

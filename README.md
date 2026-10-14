@@ -58,9 +58,9 @@ At mobile widths, existing collections can be selected and the study creator wor
 - Cheat Sheet JSON export/import and a Print action using the browser print dialog.
 - Validated model output, source-ID checking, and quotation matching against extracted content.
 - Source viewer for the original PDF page, image, audio/video timestamp, and sampled video frame.
-- Question navigation, feedback, flashcard recall, scalar numeric grading, review, and retry.
+- Previous/Next practice navigation, feedback, flashcard recall, scalar numeric grading, and review. Quizzes show a light question card, numbered two-column answer choices (stacked on mobile), and clickable progress segments. Selecting an option grades it immediately; Don’t know reveals the answer. Correct and incorrect selections play distinct short synthesized sounds once; the speaker control mutes them and remembers the preference locally. Returning to a graded question shows its saved feedback without replaying sound. Completion shows reviewed/answered and remaining counts, optional recall/score results, and an expandable question summary. Restart flashcards (or quiz) resets session answers while preserving the saved set, stars, and hints; Back to last question and Home provide clear exits. The study view's top-left Home control returns to Sets.
 - Server-saved quizzes and progress; optional browser persistence for sample/imported sessions.
-- Quiz JSON export/import without raw uploads or API credentials.
+- Quiz JSON import and cheat-sheet JSON export/import without raw uploads or API credentials. Practice screens omit export actions.
 - Removal previews affected quizzes and deletes the material, its extracted content and embeddings, and quizzes that cite it. Quizzes using other material remain available.
 
 ## Limits
@@ -109,7 +109,7 @@ Python tests use a fixture AI provider. They exercise actual PDF/image validatio
 
 ## Retrieval and storage
 
-SQLite remains authoritative. Extracted source text is split into approximately 800-token chunks with 100-token overlap, preserving exact character offsets and source identity. OpenAI text-embedding-3-small creates vectors (1,536 dimensions by default), stored locally in `data/chroma/`. A query retrieves up to 24 chunks from the selected collection; the model selects up to 12 for quiz generation. Source selection is restricted to retrieved chunk IDs. Quiz generation chooses application-assigned evidence IDs; the server attaches their exact quotes and original PDF pages or recording locations. Cheat sheets use constrained excerpt IDs, and all citations are checked against selected lecture chunks. Numerical validation remains enabled.
+SQLite remains authoritative. Extracted source text is split into approximately 800-token chunks with 100-token overlap, preserving exact character offsets and source identity. OpenAI text-embedding-3-small creates vectors (1,536 dimensions by default), stored locally in `data/chroma/`. A query retrieves up to 24 chunks from the selected collection. When COHERE_API_KEY is configured, Cohere Rerank orders these passages and returns up to 12 before the LLM checks relevance and source sufficiency. Without a key or if the service fails, generation uses the existing vector results and LLM selection. Reranking status, model, scores, and fallback reason are saved with the request; it does not establish factual correctness. Source selection is restricted to retrieved chunk IDs. Quiz generation chooses application-assigned evidence IDs; the server attaches their exact quotes and original PDF pages or recording locations. Cheat sheets use constrained excerpt IDs, and all citations are checked against selected lecture chunks. Numerical validation remains enabled.
 
 Requests, resolved settings, parent quiz IDs, retrieval snapshots, and actual source dependencies are saved in SQLite. Earlier quiz questions are follow-up context, not source evidence. The model is not trained or fine-tuned on the growing library. Source-backed retrieval does not establish factual correctness.
 
@@ -133,3 +133,19 @@ Local collections do not need an account or a separate database server. Upload l
 The older Worker starter and `.openai/hosting.json` are retained but unused. This local-only implementation does not deploy the registered Site or change the portfolio. Run `app.py`, not the Worker starter.
 
 Cheat Sheet citations use app-assigned excerpt IDs in the model schema. The app resolves each ID to the exact stored excerpt and checks its source ownership. This avoids model-rewritten quotations; it does not establish that every generated statement is factually correct. Structured output schemas follow the [official OpenAI documentation](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+
+## Cohere reranking
+
+Set `COHERE_API_KEY` in the ignored server-side `.env` file, then restart. `COHERE_RERANK_MODEL` defaults to `rerank-v4.0-fast`. Only retrieved lecture passages and the request are sent to Cohere. SQLite still scopes eligibility to the selected study folder and original material snapshot. Calls time out after 15 seconds; missing credentials, provider failures, or invalid returned indices preserve the existing retrieval path. Original source records provide citations. No additional SDK dependency is needed.
+
+Generated quiz/flashcard screens omit the AI-generated badge and use Previous/Next. Authored samples and imports remain labelled. Cheat-sheet export and print remain available.
+
+
+## Flashcards and question bank
+
+Click the large card to flip between question and answer. Enter and Space work when the card is focused. Back and Continue navigate, with a card counter between them. Flipping preserves recall grading; the front hides the answer, explanation, and citation.
+
+Get a hint uses the card's original lecture passage and the configured OpenAI model. Hints are cached in SQLite, capped at 140 characters, and checked for direct answer text before saving. Source inspection remains available; these checks do not establish unrestricted instructional correctness. Hint failure preserves the card and answers.
+
+Star a generated lecture flashcard to save it in the selected folder's Question bank tab. Practice starred opens all matching saved cards, or select one card. Search filters both the list and practice queue. Stars persist across refresh and restart; unstar removes a bookmark. Question identities include their original quiz, so cards from different sets do not collide. Saved banks up to 500 cards can restore their current session from local browser state; the stars and source-backed originals live in SQLite. Imported and authored sample cards can flip, but their hint/star controls require a saved generated source. Deleting a material or folder removes dependent stars and cached hints.

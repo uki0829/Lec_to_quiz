@@ -133,6 +133,16 @@ def test_saved_progress_and_deletion(setup):
     progress = {"index": 1, "answers": {"q0": {"selected": 0, "submitted": True, "correct": True}}}
     assert client.put("/api/quizzes/"+quiz["id"]+"/progress", json=progress).status_code == 200
     assert client.get("/api/quizzes/"+quiz["id"]).json()["progress"] == progress
+    # Reviewed cards remain reviewed after flipping back, without claiming recall.
+    reviewed = {"index": 0, "answers": {"q0": {"reviewed": True, "revealed": False}}, "review": True}
+    assert client.put("/api/quizzes/"+quiz["id"]+"/progress", json=reviewed).status_code == 200
+    assert client.get("/api/quizzes/"+quiz["id"]).json()["progress"] == reviewed
+    restart = {"index": 0, "answers": {}, "review": False}
+    assert client.put("/api/quizzes/"+quiz["id"]+"/progress", json=restart).status_code == 200
+    restored = client.get("/api/quizzes/"+quiz["id"]).json()
+    assert restored["id"] == quiz["id"]
+    assert restored["progress"] == restart
+    assert restored["questions"] == quiz["questions"]
     assert client.delete("/api/materials/"+mid).json()["deleted"]
     assert client.get("/api/quizzes/"+quiz["id"]).status_code == 404
     assert not store.sources(mid)

@@ -3,6 +3,7 @@ import contextlib
 import json
 import hashlib
 import mimetypes
+import re
 import os
 import shutil
 import time
@@ -20,6 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from ai import AI
 from processing import Engine, duration, ffmpeg_path
 from storage import Store, uid
+from schemas import normalize
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
@@ -38,6 +40,10 @@ class QuizRequest(BaseModel):
     format: str | None = None
     count: int | None = None
     difficulty: str | None = None
+
+
+class StarStatus(BaseModel):
+    starred: bool
 
 
 class CollectionName(BaseModel):
@@ -110,7 +116,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
             ready = False
         return {"connected": bool(os.getenv("OPENAI_API_KEY")), "model": engine.ai.model,
                 "transcriptionModel": engine.ai.audio_model, "ffmpegAvailable": ready,
-                "maxDurationMinutes": 30, "embeddingModel": engine.retriever.model}
+                "maxDurationMinutes": 30, "embeddingModel": engine.retriever.model,
+                "rerankConfigured": bool(engine.reranker.api_key), "rerankModel": engine.reranker.model}
 
     def require_collection(cid):
         row = store.one('SELECT * FROM collections WHERE id=?', (cid,))
@@ -201,7 +208,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
             qids = [q['id'] for q in impact['quizzes']]
             with store.connect() as db:
                 for qid in qids:
-                    for table in ('quiz_sources', 'quiz_collections', 'quizzes'):
+                    for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quizzes'):
                         db.execute(f"DELETE FROM {table} WHERE {'id' if table == 'quizzes' else 'quiz_id'}=?", (qid,))
                     db.execute('DELETE FROM requests WHERE quiz_id=?', (qid,))
                 for mid in mids:
@@ -333,7 +340,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
             affected = affected_quizzes(material_id)
             with store.connect() as db:
                 for q in affected:
-                    for table in ('quiz_sources', 'quiz_collections', 'quizzes'):
+                    for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quizzes'):
                         db.execute(f"DELETE FROM {table} WHERE {'id' if table=='quizzes' else 'quiz_id'}=?", (q['id'],))
                     db.execute('DELETE FROM requests WHERE quiz_id=?', (q['id'],))
                 db.execute('INSERT OR IGNORE INTO vector_cleanup SELECT id FROM chunks WHERE material_id=?', (material_id,))
@@ -443,6 +450,74 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
         if not result:
             raise HTTPException(404, "Quiz not found.")
         return result
+
+    def require_flashcard(quiz_id, question_id):
+        quiz = store.quiz(quiz_id)
+        question = next((q for q in quiz['questions'] if q['id'] == question_id), None) if quiz else None
+        if not question:
+            raise HTTPException(404, 'Flashcard not found.')
+        if question['type'] != 'flashcard':
+            raise HTTPException(400, 'This action is available for flashcards.')
+        return quiz, question
+
+    @app.put('/api/quizzes/{quiz_id}/questions/{question_id}/star')
+    def star_question(quiz_id: str, question_id: str, body: StarStatus):
+        with mutation_lock:
+            require_flashcard(quiz_id, question_id)
+            if body.starred:
+                store.execute('INSERT OR IGNORE INTO starred_questions VALUES(?,?,?)',
+                              (quiz_id, question_id, time.time()))
+            else:
+                store.execute('DELETE FROM starred_questions WHERE quiz_id=? AND question_id=?',
+                              (quiz_id, question_id))
+            return {'starred': body.starred}
+
+    @app.get('/api/collections/{cid}/question-bank')
+    def question_bank(cid: str):
+        require_collection(cid)
+        rows = store.all('SELECT sq.quiz_id,sq.question_id,sq.created FROM starred_questions sq '
+                         'JOIN quiz_collections qc ON qc.quiz_id=sq.quiz_id WHERE qc.collection_id=? '
+                         'ORDER BY sq.created DESC', (cid,))
+        questions = []
+        for row in rows:
+            quiz = store.quiz(row['quiz_id'])
+            question = next((q for q in quiz['questions'] if q['id'] == row['question_id']), None) if quiz else None
+            if question:
+                questions.append({**question, 'quizTitle': quiz['title'], 'starredAt': row['created']})
+        return {'questions': questions}
+
+    @app.post('/api/quizzes/{quiz_id}/questions/{question_id}/hint')
+    def flashcard_hint(quiz_id: str, question_id: str):
+        with mutation_lock:
+            _, question = require_flashcard(quiz_id, question_id)
+            cached = store.one('SELECT hint FROM question_hints WHERE quiz_id=? AND question_id=?',
+                               (quiz_id, question_id))
+            if cached:
+                return {'hint': cached['hint'], 'cached': True}
+            sid = question['source'].get('id')
+            row = store.one('SELECT body FROM sources WHERE id=?', (sid,))
+            if not row:
+                raise HTTPException(404, 'The lecture source is no longer available.')
+            source = json.loads(row['body'])
+        try:
+            hint = ''
+            for attempt in range(2):
+                raw = engine.ai.hint(question, source, 'Avoid stating the answer. Give a reasoning cue.' if attempt else '')
+                hint = raw.get('hint', '').strip()
+                answer = normalize(question['answer'])
+                if hint and len(hint) <= 140 and not re.search(r'(?<!\w)' + re.escape(answer) + r'(?!\w)', normalize(hint)):
+                    break
+            else:
+                raise ValueError('A hint could not be created without revealing the answer. Try again.')
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise HTTPException(502, str(exc) if isinstance(exc, ValueError) else 'Hint unavailable. Try again.') from exc
+        with mutation_lock:
+            require_flashcard(quiz_id, question_id)
+            store.execute('INSERT OR IGNORE INTO question_hints VALUES(?,?,?,?)',
+                          (quiz_id, question_id, hint, time.time()))
+            cached = store.one('SELECT hint FROM question_hints WHERE quiz_id=? AND question_id=?',
+                               (quiz_id, question_id))
+        return {'hint': cached['hint'], 'cached': False}
 
     @app.put("/api/quizzes/{quiz_id}/progress")
     async def progress(quiz_id: str, request: Request):
