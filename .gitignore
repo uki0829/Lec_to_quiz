@@ -1,0 +1,9 @@
+dist/
+site.tar.gz
+.venv/
+.env
+data/
+__pycache__/
+.pytest_cache/
+*.pyc
+playwright-report/

@@ -1,0 +1,10 @@
+Sample lecture: Gradient descent
+
+Page 1 — Objective and update
+We minimize a differentiable loss L(w). The gradient points toward the steepest local increase, so gradient descent takes a step in the negative gradient direction. The update is w_new = w - eta * gradient(L(w)). Eta is the learning rate. A stationary point has zero gradient but is not necessarily a global minimum.
+
+Page 2 — Learning rate and a quadratic
+A very small learning rate can make progress slow. A large learning rate may overshoot or diverge. Consider L(w) = w^2, whose gradient is 2w. If w = 3 and eta = 0.1, one update gives 3 - 0.1 * 6 = 2.4. For this quadratic, w_new = (1 - 2*eta)*w. Starting with w = 1 and eta = 1.1 gives w_new = -1.2 and a larger loss.
+
+Page 3 — Batch, stochastic, and vector updates
+Full-batch gradient descent uses all training examples to calculate each gradient. SGD uses one sampled example; mini-batch methods use a subset. For a vector w, subtract eta times the gradient component by component. If w = [2, -1], gradient = [4, -2], and eta = 0.25, the updated vector is [1, -0.5]. If a scalar gradient is zero, the ordinary gradient-descent update leaves the scalar unchanged.

@@ -1,0 +1,7 @@
+Supplement lecture: Learning rate stability and stopping criteria
+For L(w)=w^2, the gradient is 2w and the update is w_next=(1-2*eta)*w.
+For a nonzero starting point, convergence toward zero requires |1-2*eta|<1, so 0<eta<1.
+When 0<eta<0.5 the sign is preserved and the magnitude shrinks at each step. When 0.5<eta<1 the sign alternates while the magnitude shrinks.
+With eta=0.75 and w=4, w_next=(1-1.5)*4=-2. The loss decreases from 16 to 4. The next step gives w=-2*(1-1.5)=1 and loss 1.
+At eta=1, w_next=-w and the magnitude does not shrink. If eta=1.1 and w=1, w_next=-1.2; the loss grows from 1 to 1.44.
+A stopping criterion is an explicit condition used to end optimization. One example is gradient magnitude below a selected tolerance, such as |gradient|<0.01. A small gradient does not establish a global minimum for an arbitrary loss.

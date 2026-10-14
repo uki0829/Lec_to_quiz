@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const text=readFileSync(new URL('../source/app.js',import.meta.url),'utf8');
+const elements=new Map();
+const element=()=>({value:'',dataset:{},addEventListener(){},querySelectorAll(){return []},setAttribute(){},click(){},style:{},hidden:false});
+const document={querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return []}};
+const context=vm.createContext({document,window:{},structuredClone,console,scheduleSave(){}});
+vm.runInContext(text,context);
+const {gradeNumeric,validateImported,samples,inferRequestedFormat}=context.window.__lectureLab;
+assert.equal(gradeNumeric('2.4e0',2.4,.001),true);
+assert.equal(gradeNumeric('-0.5',-.5,.001),true);
+assert.equal(gradeNumeric('2.401',2.4,.001),true);
+assert.equal(gradeNumeric('3.6',2.4,.001),false);
+for(const value of ['2.4abc','Infinity','NaN','','0x10'])assert.equal(gradeNumeric(value,2.4,.001),null);
+for(const [format,questions] of Object.entries(samples)){
+  assert.equal(questions.length,6);
+  assert.doesNotThrow(()=>validateImported({title:'Sample',questions}));
+  if(format==='calculation')for(const q of questions)assert.equal(gradeNumeric(String(q.numericAnswer),q.numericAnswer,q.tolerance),true);
+}
+assert.throws(()=>validateImported({title:'Invalid',questions:[{id:'x',type:'mcq'}]}));
+assert.throws(()=>validateImported({title:'Invalid',questions:[]}));
+assert.equal(inferRequestedFormat('Create four flashcards'), 'flashcard');
+assert.equal(inferRequestedFormat('Multiple-choice questions with a numerical example'), 'mcq');
+assert.equal(inferRequestedFormat('Calculation questions about gradients'), 'calculation');
+assert.equal(inferRequestedFormat('Compare flashcards and multiple choice'), null);
+assert.equal(inferRequestedFormat('Explain calculus'), null);
+vm.runInContext("format='flashcard';document.querySelector('#count').value='4';startQuiz({title:'Older quiz',questions:structuredClone(samples.mcq),mode:'sample',format:'mcq'});",context);
+assert.equal(vm.runInContext('format',context),'flashcard');
+assert.equal(document.querySelector('#count').value,'4');
+console.log('Frontend checks passed: sample schemas, six-question count, scientific notation, invalid input, numeric tolerance.');
+const sheet=context.window.__lectureLab.sampleSheet();
+assert.equal(sheet.sections.length,6);
+assert.equal(validateImported(sheet).format,'cheatsheet');
+assert.equal(inferRequestedFormat('Create a cheat sheet'),'cheatsheet');
+assert.throws(()=>validateImported({...sheet,sections:[{...sheet.sections[0],points:[]}]}));
+assert.throws(()=>validateImported({...sheet,sections:[sheet.sections[0],sheet.sections[0]]}));
+vm.runInContext('saveSnapshot=()=>{};startQuiz(window.__lectureLab.sampleSheet());',context);
+assert.equal(document.querySelector('#study').hidden,true);
+assert.equal(document.querySelector('#cheatsheet').hidden,false);
+assert.match(document.querySelector('#sheet-sections').innerHTML,/Open source material/);
+assert.match(document.querySelector('#sheet-sections').innerHTML,/sheet-section-5/);
+console.log('Cheat sheet frontend checks passed: schema, sample, rendering, evidence controls, and import rejection.');
+if(process.argv[2]){
+  const exported=JSON.parse(readFileSync(process.argv[2],'utf8'));
+  const imported=validateImported(exported);
+  assert.equal(imported.format,'cheatsheet');assert.ok(imported.sections.length);
+  assert.ok(imported.sections.every(s=>s.source.id&&s.source.quote));
+  console.log('Exported live cheat sheet passed import validation.');
+}

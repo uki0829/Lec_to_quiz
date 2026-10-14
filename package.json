@@ -1,0 +1,10 @@
+{
+  "name": "lecture-lab-local",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bash scripts/start.sh",
+    "test": ".venv/bin/python -m pytest -q && node scripts/check_frontend.mjs",
+    "check": "node --check source/app.js && node --check source/local.js"
+  }
+}
