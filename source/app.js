@@ -35,12 +35,13 @@ $('#files').onchange=e=>{addFiles(e.target.files);e.target.value='';};
 ['dragenter','dragover'].forEach(t=>$('#drop').addEventListener(t,e=>{e.preventDefault();$('#drop').classList.add('drag');}));['dragleave','drop'].forEach(t=>$('#drop').addEventListener(t,e=>{e.preventDefault();$('#drop').classList.remove('drag');if(t==='drop')addFiles(e.dataTransfer.files);}));
 $('#reset-material').onclick=()=>{if(busy)return;attachments=[];$('#notes').value='';materialId=null;materialDirty=true;$('#saved-materials').value='';$('#material-summary').innerHTML='';listFiles();message('');saveSnapshot();};
 document.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>{format=b.dataset.format;document.querySelectorAll('[data-format]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(typeof updateComposerState==='function')updateComposerState();});
-function startQuiz(q){quiz=q;index=q.progress?.index||0;answers=q.progress?.answers||{};$('#saved-quizzes').value=q.id||'';$('#empty').hidden=true;$('#summary').hidden=true;$('#study').hidden=q.format==='cheatsheet';$('#cheatsheet').hidden=q.format!=='cheatsheet';$('#sample-context').hidden=q.mode!=='sample';$('#mode-badge').textContent=q.mode==='sample'?(q.format==='cheatsheet'?'Sample sheet':'Sample quiz'):q.mode==='imported'?(q.format==='cheatsheet'?'Imported sheet':'Imported quiz'):'';$('#mode-badge').hidden=!['sample','imported'].includes(q.mode);$('#mode-badge').className='badge'+(q.mode==='sample'?' sample-badge':'');$('#quiz-title').textContent=q.title;if(typeof updateQuizContext==='function')updateQuizContext(q);hideFlashcardAnswer();render();}
+function startQuiz(q){cancelQuizAdvance();closeQuizExplanation();quiz=q;index=q.progress?.index||0;answers=q.progress?.answers||{};$('#saved-quizzes').value=q.id||'';$('#empty').hidden=true;$('#summary').hidden=true;$('#study').hidden=q.format==='cheatsheet';$('#cheatsheet').hidden=q.format!=='cheatsheet';$('#sample-context').hidden=q.mode!=='sample';$('#mode-badge').textContent=q.mode==='sample'?(q.format==='cheatsheet'?'Sample sheet':q.format==='flashcard'?'Sample flashcards':'Sample quiz'):q.mode==='imported'?(q.format==='cheatsheet'?'Imported sheet':'Imported quiz'):q.mode==='shared'?(q.demo?'Demo shared set':'Shared set'):'';$('#mode-badge').hidden=!['sample','imported','shared'].includes(q.mode);$('#mode-badge').className='badge'+(q.mode==='sample'?' sample-badge':'');$('#quiz-title').innerHTML=mathHtml(q.title);if(typeof updateQuizContext==='function')updateQuizContext(q);hideFlashcardAnswer();if(typeof updateSocialQuiz==='function')updateSocialQuiz(q);render();}
 function sampleQuiz(){if(format==='cheatsheet'){message('Authored sample set.');return startQuiz(sampleSheet());}const q={title:'Gradient descent, one step at a time',description:({mcq:'Choose an answer, then check the reasoning.',flashcard:'Recall first. Reveal when you are ready.',calculation:'Work it out, then enter a numeric answer.'})[format],questions:structuredClone(samples[format]),mode:'sample',format};message('Authored sample set.');startQuiz(q);}
 $('#top-sample').onclick=$('#empty-sample').onclick=sampleQuiz;
-function sourceHtml(q){return '<details class="source-ref"><summary>Source: '+esc(q.source.name)+' · '+esc(q.source.locator)+'</summary><blockquote>'+esc(q.source.quote)+'</blockquote><button class="quiet source-open" data-source="'+esc(q.source.id||'sample')+'">Open source material</button></details>';}
+function sourceHtml(q){if(quiz?.mode==='shared'||(!q.source.id&&quiz?.mode!=='sample'))return '<details class="source-ref"><summary>Source: '+esc(q.source.name)+' · '+esc(q.source.locator)+'</summary><blockquote>'+mathHtml(q.source.quote)+'</blockquote></details>';return '<details class="source-ref"><summary>Source: '+esc(q.source.name)+' · '+esc(q.source.locator)+'</summary><blockquote>'+mathHtml(q.source.quote)+'</blockquote><button class="quiet source-open" data-source="'+esc(q.source.id||'sample')+'">Open source material</button></details>';}
+function mathHtml(value,options){return window.LectureMath?window.LectureMath.toHtml(value,options):esc(value);}
 function flashIcon(name){return '<img class="icon" src="/static/icons/'+name+'.svg" alt="" aria-hidden="true">';}
-function feedbackHtml(q,a){const heading=q.type==='flashcard'?'Explanation':a.skipped?'Answer':a.correct?'That’s correct.':'Let’s work through it.';return '<div class="feedback '+(q.type==='flashcard'?'':a.correct?'good':'bad')+'"><h5>'+heading+'</h5><p>'+esc(q.explanation)+'</p>'+(q.type==='calculation'?'<p style="margin-top:9px"><strong>Answer: '+esc(q.answer)+'</strong></p>':'')+(q.steps?.length?'<ol>'+q.steps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>':'')+'</div>';}
+function feedbackHtml(q,a){const heading=q.type==='flashcard'?'Explanation':a.skipped?'Answer':a.correct?'That’s correct.':'Let’s work through it.';return '<div class="feedback '+(q.type==='flashcard'?'':a.correct?'good':'bad')+'"><h5>'+heading+'</h5><p>'+mathHtml(q.explanation)+'</p>'+(q.type==='calculation'?'<p style="margin-top:9px"><strong>Answer: '+mathHtml(q.answer)+'</strong></p>':'')+(q.steps?.length?'<ol>'+q.steps.map(x=>'<li>'+mathHtml(x)+'</li>').join('')+'</ol>':'')+'</div>';}
 let answerAudioContext=null,answerSoundEnabled=true,answerSoundEpoch=0;
 try{answerSoundEnabled=localStorage.getItem('lecture-lab-sound')!=='off';}catch{}
 function setAnswerSound(enabled){
@@ -71,6 +72,34 @@ async function playAnswerSound(correct){
     return true;
   }catch{return false;}
 }
+let quizAdvanceTimer=null,quizAdvanceEpoch=0;
+function cancelQuizAdvance(){clearTimeout(quizAdvanceTimer);quizAdvanceTimer=null;quizAdvanceEpoch++;}
+function closeQuizExplanation(){const dialog=$('#quiz-explanation-dialog');if(dialog?.open)dialog.close();}
+function dismissQuizExplanation(){closeQuizExplanation();$('#quiz-explanation')?.focus({preventScroll:true});}
+function advanceQuiz(){if(!quiz)return;if(index<quiz.questions.length-1)goToQuestion(index+1);else showSummary();}
+function fitQuizStage(){
+  const card=$('#question');
+  if($('#authenticated-app').classList?.contains?.('practice-page')||quiz?.questions?.[index]?.type!=='mcq'||$('#study').hidden||!card?.getBoundingClientRect)return;
+  // Keep navigation in view; long questions scroll inside the card.
+  const available=window.innerHeight-(card.getBoundingClientRect().top+window.scrollY)-$('.study-footer').offsetHeight-58;
+  card.style.setProperty('--quiz-stage-height',Math.max(300,Math.min(660,available))+'px');
+}
+window.addEventListener?.('resize',fitQuizStage);
+document.fonts?.ready.then(fitQuizStage);
+function openQuizExplanation(){
+  const currentQuiz=quiz,currentIndex=index,q=quiz?.questions?.[index],a=q&&answers[q.id];
+  if(!q||!(q.type==='mcq'&&a?.submitted||q.type==='flashcard'&&a?.revealed))return;
+  cancelQuizAdvance();
+  const dialog=$('#quiz-explanation-dialog');
+  $('#quiz-explanation-content').innerHTML=feedbackHtml(q,a)+sourceHtml(q);
+  $('#quiz-explanation-content').scrollTop=0;
+  $('#quiz-explanation-content').querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));
+  $('#quiz-explanation-next').textContent=index===quiz.questions.length-1?'View summary':'Continue';
+  $('#quiz-explanation-next').onclick=()=>{closeQuizExplanation();if(quiz===currentQuiz&&index===currentIndex)advanceQuiz();};
+  $('#quiz-explanation-close').onclick=dismissQuizExplanation;
+  dialog.oncancel=event=>{event.preventDefault();dismissQuizExplanation();};
+  if(!dialog.open)dialog.showModal();
+}
 function submitChoice(choice,skipped=false){
   const q=quiz?.questions?.[index];
   if(q?.type!=='mcq'||answers[q.id]?.submitted)return;
@@ -78,7 +107,15 @@ function submitChoice(choice,skipped=false){
   const correct=!skipped&&choice===q.correctIndex;
   answers[q.id]={selected:skipped?null:choice,submitted:true,correct,...(skipped?{skipped:true}:{})};
   if(!skipped)playAnswerSound(correct);
-  render();$('#quiz-feedback')?.focus();
+  render();
+  if(!correct)return openQuizExplanation();
+  cancelQuizAdvance();
+  const currentQuiz=quiz,currentIndex=index,epoch=quizAdvanceEpoch;
+  quizAdvanceTimer=setTimeout(()=>{
+    quizAdvanceTimer=null;
+    if(epoch===quizAdvanceEpoch&&quiz===currentQuiz&&index===currentIndex&&!$('#study').hidden&&
+       (typeof currentView==='undefined'||currentView==='study'))advanceQuiz();
+  },550);
 }
 function renderQuizProgress(){
   const target=$('#quiz-progress');target.hidden=quiz.questions[index].type!=='mcq';
@@ -89,12 +126,12 @@ function renderQuizProgress(){
     '</div><span class="quiz-progress-total" aria-label="'+quiz.questions.length+' questions">'+quiz.questions.length+'</span>';
   target.querySelectorAll('[data-quiz-index]').forEach(button=>button.onclick=()=>goToQuestion(Number(button.dataset.quizIndex)));
 }
-function render(){if(!quiz)return;if(quiz.format==='cheatsheet')return renderCheatSheet();const q=quiz.questions[index],a=answers[q.id]||{};renderQuizProgress();$('#question-nav').innerHTML=quiz.questions.map((x,i)=>'<button class="q-dot '+(i===index?'current ':'')+(answers[x.id]?.submitted?(answers[x.id].correct?'done':'missed'):'')+'" data-index="'+i+'" '+(i===index?'aria-current="step"':'')+' aria-label="Question '+(i+1)+'">'+(i+1)+'</button>').join('');$('#question-nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{goToQuestion(Number(b.dataset.index));});const done=Object.values(answers).filter(x=>x.submitted).length;$('#progress-bar').style.width=done/quiz.questions.length*100+'%';let html='<div class="question-meta"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><span>'+({mcq:'Multiple choice',flashcard:'Flashcard',calculation:'Calculation'})[q.type]+'</span></div><h4 tabindex="-1" id="question-prompt">'+esc(q.prompt)+'</h4>';
+function render(){if(!quiz)return;if(quiz.format==='cheatsheet')return renderCheatSheet();const q=quiz.questions[index],a=answers[q.id]||{};renderQuizProgress();$('#question-nav').innerHTML=quiz.questions.map((x,i)=>'<button class="q-dot '+(i===index?'current ':'')+(answers[x.id]?.submitted?(answers[x.id].correct?'done':'missed'):'')+'" data-index="'+i+'" '+(i===index?'aria-current="step"':'')+' aria-label="Question '+(i+1)+'">'+(i+1)+'</button>').join('');$('#question-nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{goToQuestion(Number(b.dataset.index));});const done=Object.values(answers).filter(x=>x.submitted).length;$('#progress-bar').style.width=done/quiz.questions.length*100+'%';let html='<div class="question-meta"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><span>'+({mcq:'Multiple choice',flashcard:'Flashcard',calculation:'Calculation'})[q.type]+'</span></div><h4 tabindex="-1" id="question-prompt">'+mathHtml(q.prompt)+'</h4>';
 if(q.type==='mcq'){
-  html='<div class="quiz-card-toolbar"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><button id="quiz-sound" class="quiz-sound" aria-label="'+(answerSoundEnabled?'Mute sounds':'Enable sounds')+'" aria-pressed="'+answerSoundEnabled+'" title="'+(answerSoundEnabled?'Sounds on':'Sounds off')+'">'+flashIcon(answerSoundEnabled?'volume-2':'volume-x')+'</button></div><h4 tabindex="-1" id="question-prompt">'+esc(q.prompt)+'</h4>'+
-    '<p class="quiz-answer-label">'+(a.submitted?a.skipped?'Answer revealed':a.correct?'Correct!':'Not quite.':'Choose an answer')+'</p><div class="options" role="group" aria-label="Answer options">'+
-    q.options.map((x,i)=>'<button class="option '+(a.selected===i?'selected ':'')+(a.submitted?(i===q.correctIndex?'correct':a.selected===i?'wrong':''):'')+'" data-answer="'+i+'" aria-pressed="'+String(a.selected===i)+'" '+(a.submitted?'disabled':'')+'><span class="letter">'+(i+1)+'</span><span class="option-text">'+esc(x)+'</span>'+(a.submitted&&i===q.correctIndex?'<span class="answer-state">'+flashIcon('check')+'<span class="sr-only">Correct answer</span></span>':a.submitted&&a.selected===i?'<span class="answer-state">'+flashIcon('x')+'<span class="sr-only">Your answer, incorrect</span></span>':'')+'</button>').join('')+'</div>'+
-    (!a.submitted?'<div class="quiz-bottom-actions"><button class="quiz-skip" id="quiz-skip">Don’t know?</button></div>':'');
+  html='<div class="quiz-card-toolbar"><span>Question '+(index+1)+' of '+quiz.questions.length+'</span><button id="quiz-sound" class="quiz-sound" aria-label="'+(answerSoundEnabled?'Mute sounds':'Enable sounds')+'" aria-pressed="'+answerSoundEnabled+'" title="'+(answerSoundEnabled?'Sounds on':'Sounds off')+'">'+flashIcon(answerSoundEnabled?'volume-2':'volume-x')+'</button></div><div class="quiz-content"><div class="quiz-content-inner"><h4 tabindex="-1" id="question-prompt">'+mathHtml(q.prompt)+'</h4>'+
+    '<p class="quiz-answer-label" role="status">'+(a.submitted?a.skipped?'Answer revealed':a.correct?'Correct!':'Not quite.':'Choose an answer')+'</p><div class="options" role="group" aria-label="Answer options">'+
+    q.options.map((x,i)=>'<button class="option '+(a.selected===i?'selected ':'')+(a.submitted?(i===q.correctIndex?'correct':a.selected===i?'wrong':''):'')+'" data-answer="'+i+'" aria-pressed="'+String(a.selected===i)+'" '+(a.submitted?'disabled':'')+'><span class="letter">'+(i+1)+'</span><span class="option-text">'+mathHtml(x)+'</span>'+(a.submitted&&i===q.correctIndex?'<span class="answer-state">'+flashIcon('check')+'<span class="sr-only">Correct answer</span></span>':a.submitted&&a.selected===i?'<span class="answer-state">'+flashIcon('x')+'<span class="sr-only">Your answer, incorrect</span></span>':'')+'</button>').join('')+'</div>'+
+    '</div></div><div class="quiz-bottom-actions">'+(a.submitted?'<button class="quiz-skip" id="quiz-explanation">Explanation</button>':'<button class="quiz-skip" id="quiz-skip">Don’t know?</button>')+'</div>';
 }
 
 if(q.type==='calculation'){html+='<label class="sr-only" for="number-answer">Your numeric answer</label><div class="numeric-row"><input class="field" id="number-answer" inputmode="decimal" placeholder="Your numeric answer" value="'+esc(a.value||'')+'" '+(a.submitted?'disabled':'')+'><button class="primary" id="check" '+(a.submitted?'hidden':'')+'>Check</button></div><p class="unit">Enter a number. Absolute tolerance: '+esc(q.tolerance)+'.</p><div id="answer-message" role="status" class="tiny"></div><details class="hint"><summary>Need a starting point?</summary><p>Substitute given values into the relevant formula.</p></details>';}
@@ -102,27 +139,25 @@ if(q.type==='flashcard'){
   const origin=q.originQuizId||quiz.id,eligible=Boolean(origin&&(quiz.mode==='generated'||quiz.mode==='bank'));
   const starred=typeof isQuestionStarred==='function'?isQuestionStarred(q):Boolean(q.starred);
   const hintShown=Boolean(a.hintVisible&&q.hint);
-  html='<div class="flashcard-shell"><div class="flashcard-toolbar"><button id="flash-hint" class="flash-hint" '+(!eligible||q.hintLoading?'disabled':'')+' aria-expanded="'+hintShown+'">'+flashIcon('lightbulb')+(q.hintLoading?'Getting hint…':hintShown?'Hide hint':'Get a hint')+'</button><button id="flash-star" class="flash-star '+(starred?'is-starred':'')+'" aria-label="'+(starred?'Unstar card':'Star card')+'" aria-pressed="'+starred+'" title="'+(eligible?'Save to question bank':'Save a generated card')+'" '+(!eligible||q.starLoading?'disabled':'')+'>'+flashIcon(starred?'star-filled':'star')+'</button></div>'+(hintShown?'<div class="flash-hint-text" role="status">'+esc(q.hint)+'</div>':'')+'<button id="flash-flip" class="flash-flip '+(a.revealed?'answer-face':'')+'" aria-label="'+(a.revealed?'Show question':'Show answer')+'" aria-describedby="question-prompt"><span id="question-prompt" class="flash-card-text">'+esc(a.revealed?q.answer:q.prompt)+'</span></button></div>';
-  if(a.revealed){
-    if(!a.submitted)html+='<div class="flash-recall"><button class="secondary" id="again">Practice again</button><button class="primary" id="known">I knew this</button></div>';
-    html+='<details class="flash-explanation"><summary>Explanation</summary>'+feedbackHtml(q,a)+sourceHtml(q)+'</details>';
-  }
+  html='<div class="flashcard-shell"><div class="flashcard-toolbar"><button id="flash-hint" class="flash-hint" '+(!eligible||q.hintLoading?'disabled':'')+' aria-expanded="'+hintShown+'">'+flashIcon('lightbulb')+(q.hintLoading?'Getting hint…':hintShown?'Hide hint':'Get a hint')+'</button><button id="flash-star" class="flash-star '+(starred?'is-starred':'')+'" aria-label="'+(starred?'Unstar card':'Star card')+'" aria-pressed="'+starred+'" title="'+(eligible?'Save to question bank':'Save a generated card')+'" '+(!eligible||q.starLoading?'disabled':'')+'>'+flashIcon(starred?'star-filled':'star')+'</button></div>'+(hintShown?'<div class="flash-hint-text" role="status">'+mathHtml(q.hint)+'</div>':'')+'<button id="flash-flip" class="flash-flip '+(a.revealed?'answer-face':'')+'" aria-label="'+(a.revealed?'Show question':'Show answer')+'" aria-describedby="question-prompt"><span id="question-prompt" class="flash-card-text">'+mathHtml(a.revealed?q.answer:q.prompt)+'</span></button></div>';
+  // Reserve this row on both faces so flipping never moves navigation.
+  html=html.slice(0,-6)+'<div class="flash-recall"><button class="secondary" id="again" '+(!a.revealed||a.submitted?'hidden':'')+'>Practice again</button><button class="primary" id="known" '+(!a.revealed||a.submitted?'hidden':'')+'>I knew this</button><button class="quiet" id="quiz-explanation" '+(!a.revealed?'hidden':'')+'>Explanation</button></div></div>';
 }
-if(q.type!=='flashcard'&&a.submitted)html+=(q.type==='mcq'?'<div id="quiz-feedback" tabindex="-1" role="status">':'')+feedbackHtml(q,a)+sourceHtml(q)+(q.type==='mcq'?'</div>':'');
+if(q.type==='calculation'&&a.submitted)html+=feedbackHtml(q,a)+sourceHtml(q);
 $('#question').setAttribute('data-type',q.type);$('#study').setAttribute('data-format',q.type);
 $('#question').innerHTML=html;$('#previous').disabled=index===0;
 $('#previous').innerHTML=flashIcon('arrow-left')+(q.type==='flashcard'?'Back':'Previous');
 $('#next').innerHTML=(q.type==='flashcard'?'Continue':'Next')+flashIcon('arrow-right');$('#next').title=index===quiz.questions.length-1?'View results':'Next question';
 $('#flash-position').hidden=q.type!=='flashcard';$('#flash-position').textContent=(index+1)+' / '+quiz.questions.length;
 
-$('#question').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>submitChoice(Number(b.dataset.answer)));if($('#quiz-skip'))$('#quiz-skip').onclick=()=>submitChoice(null,true);if($('#quiz-sound'))$('#quiz-sound').onclick=()=>{setAnswerSound(!answerSoundEnabled);render();$('#quiz-sound').focus();};if($('#check'))$('#check').onclick=()=>{if(q.type==='mcq')answers[q.id]={...a,submitted:true,correct:a.selected===q.correctIndex};else{const value=$('#number-answer').value.trim();const result=gradeNumeric(value,q.numericAnswer,q.tolerance);if(result===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}answers[q.id]={value,submitted:true,correct:result};}render();};document.querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));scheduleSave();if($('#number-answer'))$('#number-answer').oninput=e=>{answers[q.id]={...answers[q.id],value:e.target.value};scheduleSave();};if($('#number-answer'))$('#number-answer').onkeydown=e=>{if(e.key==='Enter')$('#check')?.click();};if($('#flash-flip'))$('#flash-flip').onclick=()=>{answers[q.id]={...answers[q.id],reviewed:true,revealed:!answers[q.id]?.revealed};render();$('#flash-flip').focus();};if($('#flash-hint'))$('#flash-hint').onclick=()=>requestFlashcardHint(q);if($('#flash-star'))$('#flash-star').onclick=()=>toggleQuestionStar(q);for(const [id,correct] of [['known',true],['again',false]])if($('#'+id))$('#'+id).onclick=()=>{answers[q.id]={...answers[q.id],revealed:true,submitted:true,correct};render();};}
+$('#question').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>submitChoice(Number(b.dataset.answer)));if($('#quiz-explanation'))$('#quiz-explanation').onclick=openQuizExplanation;if($('#quiz-skip'))$('#quiz-skip').onclick=()=>submitChoice(null,true);if($('#quiz-sound'))$('#quiz-sound').onclick=()=>{setAnswerSound(!answerSoundEnabled);render();$('#quiz-sound').focus();};if($('#check'))$('#check').onclick=()=>{if(q.type==='mcq')answers[q.id]={...a,submitted:true,correct:a.selected===q.correctIndex};else{const value=$('#number-answer').value.trim();const result=gradeNumeric(value,q.numericAnswer,q.tolerance);if(result===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}answers[q.id]={value,submitted:true,correct:result};}render();};document.querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));scheduleSave();if($('#number-answer'))$('#number-answer').oninput=e=>{answers[q.id]={...answers[q.id],value:e.target.value};scheduleSave();};if($('#number-answer'))$('#number-answer').onkeydown=e=>{if(e.key==='Enter')$('#check')?.click();};if($('#flash-flip'))$('#flash-flip').onclick=()=>{answers[q.id]={...answers[q.id],reviewed:true,revealed:!answers[q.id]?.revealed};render();$('#flash-flip').focus();};if($('#flash-hint'))$('#flash-hint').onclick=()=>requestFlashcardHint(q);if($('#flash-star'))$('#flash-star').onclick=()=>toggleQuestionStar(q);for(const [id,correct] of [['known',true],['again',false]])if($('#'+id))$('#'+id).onclick=()=>{answers[q.id]={...answers[q.id],revealed:true,submitted:true,correct};render();};fitQuizStage();}
 function sampleSheet(){
   return {title:'Gradient descent',format:'cheatsheet',mode:'sample',questions:[],sections:samples.flashcard.map((q,i)=>({id:'s'+i,heading:q.prompt,points:[q.answer],formulas:[],source:q.source}))};
 }
 function renderCheatSheet(){
-  $('#study').hidden=true;$('#summary').hidden=true;$('#cheatsheet').hidden=false;$('#sheet-title').textContent=quiz.title;
-  $('#sheet-nav').innerHTML=quiz.sections.map((s,i)=>'<button class="quiet" data-sheet-section="'+i+'">'+esc(s.heading)+'</button>').join('');
-  $('#sheet-sections').innerHTML=quiz.sections.map((s,i)=>'<article class="sheet-section" id="sheet-section-'+i+'"><h3 tabindex="-1">'+esc(s.heading)+'</h3><ul>'+s.points.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul>'+s.formulas.map(t=>'<pre class="sheet-formula">'+esc(t)+'</pre>').join('')+sourceHtml(s)+'</article>').join('');
+  $('#study').hidden=true;$('#summary').hidden=true;$('#cheatsheet').hidden=false;$('#sheet-title').innerHTML=mathHtml(quiz.title);
+  $('#sheet-nav').innerHTML=quiz.sections.map((s,i)=>'<button class="quiet" data-sheet-section="'+i+'">'+mathHtml(s.heading)+'</button>').join('');
+  $('#sheet-sections').innerHTML=quiz.sections.map((s,i)=>'<article class="sheet-section" id="sheet-section-'+i+'"><h3 tabindex="-1">'+mathHtml(s.heading)+'</h3><ul>'+s.points.map(t=>'<li>'+mathHtml(t)+'</li>').join('')+'</ul>'+s.formulas.map(t=>'<div class="sheet-formula">'+mathHtml(t,{formula:true})+'</div>').join('')+sourceHtml(s)+'</article>').join('');
   $('#sheet-nav').querySelectorAll('[data-sheet-section]').forEach(b=>b.onclick=()=>{const section=$('#sheet-section-'+b.dataset.sheetSection);section.scrollIntoView({behavior:'smooth',block:'start'});section.querySelector('h3').focus({preventScroll:true});});
   $('#sheet-sections').querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));
   saveSnapshot();
@@ -133,10 +168,11 @@ function hideFlashcardAnswer(){
   const q=quiz?.questions?.[index],a=q&&answers[q.id];
   if(q?.type==='flashcard'&&a)answers[q.id]={...a,reviewed:!!(a.reviewed||a.revealed||a.submitted),revealed:false};
 }
-function goToQuestion(position){index=position;hideFlashcardAnswer();render();}
+function goToQuestion(position){cancelQuizAdvance();closeQuizExplanation();index=position;hideFlashcardAnswer();render();$('#question-prompt')?.focus({preventScroll:true});}
 $('#previous').onclick=()=>{if(index>0)goToQuestion(index-1);};
-$('#next').onclick=()=>{if(index<quiz.questions.length-1)goToQuestion(index+1);else showSummary();};
+$('#next').onclick=advanceQuiz;
 function showSummary(){
+  cancelQuizAdvance();closeQuizExplanation();
   scheduleSave(true);
   const cards=quiz.format==='flashcard',total=quiz.questions.length;
   const completed=quiz.questions.filter(q=>cards
@@ -159,7 +195,7 @@ function showSummary(){
     '</section><section class="completion-next" aria-label="Next steps"><h3>Next steps</h3>'+
     '<button id="review-restart" class="completion-restart"><span class="restart-icon">'+flashIcon('rotate-ccw')+'</span><span><strong>Restart '+(cards?'flashcards':'quiz')+'</strong><small>'+total+' '+(cards?'cards':'questions')+'</small></span>'+flashIcon('chevron-right')+'</button></section></div>'+
     '<details class="completion-details"><summary>Question summary</summary><ol class="completion-questions">'+
-    quiz.questions.map(q=>'<li><span>'+esc(q.prompt)+'</span><strong>'+status(q)+'</strong></li>').join('')+'</ol></details>'+
+    quiz.questions.map(q=>'<li><span>'+mathHtml(q.prompt)+'</span><strong>'+status(q)+'</strong></li>').join('')+'</ol></details>'+
     '<div class="completion-footer"><button class="completion-back" id="review-previous">'+flashIcon('arrow-left')+'Back to last question</button><button class="completion-home" id="review-next">Home'+flashIcon('arrow-right')+'</button></div>';
   $('#review-restart').onclick=()=>{
     index=0;answers={};quiz.progress={index:0,answers:{},review:false};

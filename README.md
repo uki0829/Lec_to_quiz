@@ -1,6 +1,6 @@
 # Lecture Lab
 
-A local AI Lecture-to-Quiz application. Add lecture material, ask for a topic, and practice using multiple choice, flashcards, or scalar calculations, and generate source-linked cheat sheets. The dark study dashboard is served by Python FastAPI, with SQLite for collections, materials, requests, jobs, quizzes, and progress, plus a persistent local Chroma index for lecture retrieval.
+A local AI Lecture-to-Quiz application. Add lecture material, ask for a topic, and practice using multiple choice, flashcards, or scalar calculations, and generate source-linked cheat sheets. The dark study dashboard is served by Python FastAPI, with SQLite for collections, materials, requests, jobs, quizzes, and progress, plus a persistent local Chroma index for lecture retrieval. Accounts keep private study spaces separate, and study groups share selected practice sets.
 
 ## Start
 
@@ -10,7 +10,28 @@ The project virtual environment is already installed on this computer. From this
 bash scripts/start.sh
 ```
 
-Open **http://127.0.0.1:8765**. The app binds to localhost, has no login, and is not deployed. On another computer, install Python 3.12 and run `bash scripts/setup.sh` first. Bundled FFmpeg is provided by `imageio-ffmpeg`; use `FFMPEG_PATH` for a separate installation.
+Open **http://127.0.0.1:8765**. The app binds to localhost, supports local user accounts, and is not deployed. On another computer, install Python 3.12 and run `bash scripts/setup.sh` first. Bundled FFmpeg is provided by `imageio-ffmpeg`; use `FFMPEG_PATH` for a separate installation.
+
+## Accounts and study groups
+
+Use **Explore demo** to enter Hefeng's labelled demo profile and retain the existing folders and saved work. **Study groups** opens a seeded Machine Learning group with authored flashcards, a quiz, and a cheat sheet. Its members and content are labelled Demo; they are examples, not real classmates or a new live AI generation.
+
+Email registration/sign-in is functional on this local installation. SQLite stores account names, normalized emails, salted scrypt password hashes, hashed session tokens, collection ownership, groups, memberships, shared-set copies, and individual practice progress. Passwords and session tokens are not stored in plaintext. Sign out flushes pending progress first. Browser study state is namespaced by user; old state is migrated only to the demo profile. New accounts start with empty private libraries.
+
+Create a group, or join using its invite code. In a saved set choose **Share**, select a group, and confirm. You can also select **Share a set** inside the group library. Sharing copies questions/sections, answers, explanations, and citation excerpts. It excludes original uploads, source access IDs, requests, and the author's progress. Group members practice independently; shared practice progress is stored per user. Shared copies survive deletion of the private original. Original page/audio navigation remains available in your own library; shared sets show the citation excerpt without opening private files. Groups do not combine or index each member's private lecture files.
+
+This is a local multi-user demo: users can switch accounts on this installation. Cross-device access, email verification, password reset, moderation, and production hosting are outside this version. Invite codes grant membership to signed-in users who possess the code; the example group's code is LECTURELAB.
+
+### Enable Google sign-in
+
+The Google button uses an authorization-code/OpenID Connect flow with state, nonce, PKCE, verified ID tokens, and server-side sessions. It is implemented, fixture-tested, and has completed a real Google sign-in on this computer. For another installation, configure your own OAuth client:
+
+1. Create a Google OAuth **Web application** client and configure its consent screen/test users.
+2. Register `http://127.0.0.1:8765/api/auth/google/callback` as an authorized redirect URI. If using localhost instead, register `http://localhost:8765/api/auth/google/callback` too.
+3. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the ignored `.env`; restart the server.
+4. Open the matching local URL and choose **Continue with Google**.
+
+Google credentials never enter browser storage. Google accounts use the verified provider subject ID; no Google password is stored. If that email already has a local account, sign in by email first and use Google to link it; accounts are not silently merged. Setup follows [Google's web-server OAuth flow](https://developers.google.com/identity/protocols/oauth2/web-server) and [backend ID-token verification](https://developers.google.com/identity/sign-in/web/backend-auth). A live sign-in, callback verification, session refresh, and joining the demo study group were verified on this computer after configuring the supplied web-client credentials. Use 127.0.0.1 for this configured client; its provided file registered that callback, not the localhost variant.
 
 ## Connect OpenAI
 
@@ -44,6 +65,16 @@ The chosen format and count are authoritative. If instructions mention a differe
 Icons and illustrations, including the Cheat Sheet notepad, are bundled locally from Lucide and Microsoft Fluent Emoji, with source URLs and licenses in [source/ASSET_CREDITS.md](source/ASSET_CREDITS.md). The interface does not depend on a remote icon CDN.
 
 At mobile widths, existing collections can be selected and the study creator works without horizontal overflow. New folder and folder deletion are available on desktop and mobile; first uploads can also create a collection automatically.
+
+## Mathematical notation
+
+Equations render through a locally bundled KaTeX 0.19.0 library, including accessible MathML. Generation requests LaTeX in prompts, choices, answers, explanations, worked steps, and cheat-sheet formulas. Use `\( ... \)` for inline equations and `\[ ... \]` for standalone equations; paired dollar delimiters are supported for math content as well.
+
+New/old value labels display as upright superscripts, for example `W_new` or `W_{\mathrm{new}}` becomes `W^{\mathrm{new}}`. Genuine component indices such as `W_i` remain subscripts. Variable case, mathematical values, saved answers, grading fields, and stored source excerpts remain unchanged. Saved plain-text expressions receive conservative formatting for variable indices, exponents, Greek-gradient notation, and scientific notation. Quotes and extracted content are formatted for reading while their stored text stays verbatim. Unknown notation is not reconstructed or guessed. Malformed/unsupported TeX remains visible as escaped original text with a formatting-error tooltip.
+
+The renderer applies to individual questions, flashcard faces/hints, feedback, review, question bank, shared sets, and cheat sheets. Numeric answer fields remain scalar numbers for grading. Original PDF/images stay available through the existing source viewer. Fonts and scripts are local, so displaying saved math requires no CDN or extra AI call. Renderer options prohibit trusted HTML/links and bound macro expansion. Typesetting itself does not verify a model's mathematics; existing arithmetic and source validation remain enabled.
+
+For frontend development/tests, run `npm install` once. Runtime assets are already bundled under `source/vendor/katex`; starting the Python app does not require npm. Math checks: `node scripts/check_math.mjs`.
 
 ## Functionality
 
@@ -149,3 +180,11 @@ Click the large card to flip between question and answer. Enter and Space work w
 Get a hint uses the card's original lecture passage and the configured OpenAI model. Hints are cached in SQLite, capped at 140 characters, and checked for direct answer text before saving. Source inspection remains available; these checks do not establish unrestricted instructional correctness. Hint failure preserves the card and answers.
 
 Star a generated lecture flashcard to save it in the selected folder's Question bank tab. Practice starred opens all matching saved cards, or select one card. Search filters both the list and practice queue. Stars persist across refresh and restart; unstar removes a bookmark. Question identities include their original quiz, so cards from different sets do not collide. Saved banks up to 500 cards can restore their current session from local browser state; the stars and source-backed originals live in SQLite. Imported and authored sample cards can flip, but their hint/star controls require a saved generated source. Deleting a material or folder removes dependent stars and cached hints.
+
+## Dedicated study pages
+
+Opening a quiz, flashcard set, or calculation set enters a dedicated study page with the app’s navy palette and Home navigation. Saved private quizzes use `/study/quiz/{id}` and group sets use `/study/shared/{id}`; authored samples, imports, and bank sessions use `/study/local`. Refresh resolves saved sets through the existing authenticated APIs. Home and browser Back leave practice without discarding saved answers.
+
+Multiple-choice answers grade immediately. A correct response plays its existing sound and advances after 550 ms; an incorrect response opens a scrollable explanation dialog with citations and Continue. Answers can be reviewed through Explanation without regrading. The final advance opens the completion summary. Previous and Next are grouped at the bottom center. Card and navigation dimensions remain stable when answering or flipping a flashcard; longer content scrolls inside the card. Flashcard explanations use the same dialog, and flipping back hides the answer.
+
+Calculation prompts and worked steps use locally bundled KaTeX. Existing saved questions with double-escaped math delimiters render normally after refresh. New generation requests numerical givens and functions on standalone LaTeX equation lines, with the answer hidden until checking. Scalar numerical grading and source records remain unchanged.

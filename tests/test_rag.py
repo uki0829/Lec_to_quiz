@@ -55,7 +55,7 @@ class CrossSourceAI(FakeAI):
 
 @pytest.fixture
 def rag(tmp_path):
-    ai=CrossSourceAI();app=create_app(tmp_path,ai=ai,run_jobs=False)
+    ai=CrossSourceAI();app=create_app(tmp_path,auth_required=False,ai=ai,run_jobs=False)
     with TestClient(app) as client:
         yield client,app.state.store,app.state.engine,ai
 

@@ -20,7 +20,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ai import AI
 from processing import Engine, duration, ffmpeg_path
-from storage import Store, uid
+from storage import Store, uid, CURRENT_USER
+from accounts import Accounts
+from study_groups import Groups
 from schemas import normalize
 
 ROOT = Path(__file__).resolve().parent
@@ -50,9 +52,11 @@ class CollectionName(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
-def create_app(data_dir=None, ai=None, run_jobs=True):
+def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
     store = Store(data_dir or (ROOT / os.getenv("LECTURE_LAB_DATA_DIR", "data")))
     engine = Engine(store, ai or AI())
+    accounts = Accounts(store)
+    groups = Groups(store, accounts)
     mutation_lock = threading.RLock()
 
     @contextlib.asynccontextmanager
@@ -83,6 +87,26 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
+    @app.middleware("http")
+    async def identity_boundary(request, call_next):
+        user = accounts.session_user(request)
+        token = CURRENT_USER.set(user)
+        try:
+            if request.url.path.startswith('/api/') and not request.url.path.startswith('/api/auth/'):
+                if auth_required and not user:
+                    return JSONResponse({'error':'Sign in to continue.'}, status_code=401)
+                if auth_required:
+                    try:
+                        accounts.authorize_path(request, user)
+                    except HTTPException as exc:
+                        return JSONResponse({'error':exc.detail},status_code=exc.status_code)
+            return await call_next(request)
+        finally:
+            CURRENT_USER.reset(token)
+
+    accounts.routes(app)
+    groups.routes(app)
+
     @app.exception_handler(HTTPException)
     async def http_error(request, exc):
         return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
@@ -105,6 +129,12 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
     def page():
         return FileResponse(ROOT / "source" / "page.html")
 
+    @app.get('/study/local')
+    @app.get('/study/{kind}/{set_id}')
+    def study_page(kind: str = '', set_id: str = ''):
+        # The shell contains no study data; authenticated APIs resolve each set.
+        return FileResponse(ROOT / 'source' / 'page.html')
+
     app.mount("/static", StaticFiles(directory=ROOT / "source"), name="static")
 
     @app.get("/api/config")
@@ -121,7 +151,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
 
     def require_collection(cid):
         row = store.one('SELECT * FROM collections WHERE id=?', (cid,))
-        if not row:
+        if not row or (auth_required and not accounts.owns_collection(cid)):
             raise HTTPException(404, 'Study collection not found.')
         return row
 
@@ -135,7 +165,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
 
     @app.get('/api/collections')
     def collections():
-        rows = store.all('SELECT * FROM collections ORDER BY created DESC')
+        rows = store.all('SELECT c.* FROM collections c JOIN collection_owners o ON o.collection_id=c.id WHERE o.user_id=? ORDER BY c.created DESC', (CURRENT_USER.get()['id'],)) if auth_required else store.all('SELECT * FROM collections ORDER BY created DESC')
         folders = []
         for row in rows:
             members = store.collection_materials(row['id'])
@@ -220,6 +250,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
                     db.execute('DELETE FROM requests WHERE job_id=?', (jid,))
                     db.execute('DELETE FROM jobs WHERE id=?', (jid,))
                 db.execute('DELETE FROM requests WHERE collection_id=?', (cid,))
+                db.execute('DELETE FROM collection_owners WHERE collection_id=?', (cid,))
                 db.execute('DELETE FROM collections WHERE id=?', (cid,))
             for mid in mids:
                 shutil.rmtree(store.root / 'materials' / mid, ignore_errors=True)
@@ -296,7 +327,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
 
     @app.get("/api/materials")
     def materials():
-        result = [material_brief(r) for r in store.all('SELECT * FROM materials ORDER BY created DESC')]
+        rows = store.all('SELECT m.* FROM materials m JOIN material_collections mc ON mc.material_id=m.id JOIN collection_owners o ON o.collection_id=mc.collection_id WHERE o.user_id=? ORDER BY m.created DESC',(CURRENT_USER.get()['id'],)) if auth_required else store.all('SELECT * FROM materials ORDER BY created DESC')
+        result = [material_brief(r) for r in rows]
         return {"materials": result}
 
     @app.get("/api/materials/{material_id}")
@@ -434,6 +466,9 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
     def quizzes(collectionId: str | None = None):
         values = (collectionId,) if collectionId else ()
         where = ' WHERE qc.collection_id=?' if collectionId else ''
+        if auth_required:
+            where += (' AND ' if where else ' WHERE ') + 'qc.collection_id IN (SELECT collection_id FROM collection_owners WHERE user_id=?)'
+            values += (CURRENT_USER.get()['id'],)
         rows = store.all('SELECT q.*,qc.collection_id,c.name AS source_title FROM quizzes q '
                          'JOIN quiz_collections qc ON qc.quiz_id=q.id JOIN collections c ON c.id=qc.collection_id'+where+' ORDER BY q.created DESC', values)
         return {'quizzes': [{'id': r['id'], 'materialId': r['material_id'], 'collectionId': r['collection_id'],

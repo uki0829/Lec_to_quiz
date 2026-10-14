@@ -3,6 +3,8 @@
   const controls=[];let openControl=null,typeBuffer='',typeTime=0;
   const asset=name=>'<img class="icon" src="/static/icons/'+name+'.svg" alt="" aria-hidden="true">';
   function optionIcon(control,option){
+    if(control.select.id==='share-group')return 'users';
+    if(control.select.id==='share-set')return ({flashcard:'layers',mcq:'clipboard-list',calculation:'calculator',cheatsheet:'file-text'})[option.dataset.format]||'book-open';
     if(['collection-filter','composer-collection'].includes(control.select.id))return 'folder';
     if(control.select.id==='set-format-filter')return ({flashcard:'layers',mcq:'clipboard-list',calculation:'calculator',cheatsheet:'file-text'})[option.value]||'layers';
     return control.select.id==='composer-parent'?'book-open':'sparkles';

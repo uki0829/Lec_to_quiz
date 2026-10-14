@@ -76,7 +76,7 @@ def test_timeout_and_cancellation():
 
 
 def test_collection_isolation_evidence_and_ranking_audit(tmp_path):
-    ai = CrossSourceAI(); app = create_app(tmp_path, ai=ai, run_jobs=False)
+    ai = CrossSourceAI(); app = create_app(tmp_path,auth_required=False, ai=ai, run_jobs=False)
     engine = app.state.engine
     calls = []
     def handler(request):

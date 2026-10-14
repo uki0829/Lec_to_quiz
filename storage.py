@@ -1,10 +1,13 @@
 """Local, transactional persistence. Provider keys are never stored here."""
 import json
+from contextvars import ContextVar
 import sqlite3
 import time
 import uuid
 from pathlib import Path
 
+
+CURRENT_USER = ContextVar("lecture_lab_user", default=None)
 
 def uid():
     return uuid.uuid4().hex
@@ -42,6 +45,7 @@ class Store:
                     progress TEXT NOT NULL DEFAULT '{}', created REAL NOT NULL);
             """)
         self.migrate_collections()
+        self.migrate_identity()
 
     def migrate_collections(self):
         with self.connect() as db:
@@ -95,6 +99,29 @@ class Store:
                                    (uid(), job['id'], owner['collection_id'], job['params'], job['params'], row['id'], job['created']))
                         break
 
+    def migrate_identity(self):
+        with self.connect() as db:
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,
+                    password_hash TEXT,google_sub TEXT UNIQUE,provider TEXT NOT NULL,created REAL NOT NULL,demo INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS user_sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS collection_owners(collection_id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS auth_attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,started REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS oauth_states(state_hash TEXT PRIMARY KEY,nonce TEXT NOT NULL,verifier TEXT NOT NULL,
+                    redirect_uri TEXT NOT NULL,user_id TEXT,created REAL NOT NULL,cookie_hash TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS study_groups(id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT NOT NULL,
+                    invite_code TEXT UNIQUE NOT NULL,created REAL NOT NULL,demo INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS group_members(group_id TEXT NOT NULL,user_id TEXT NOT NULL,joined REAL NOT NULL,
+                    PRIMARY KEY(group_id,user_id));
+                CREATE TABLE IF NOT EXISTS group_sets(id TEXT PRIMARY KEY,group_id TEXT NOT NULL,author_id TEXT NOT NULL,
+                    original_quiz_id TEXT,body TEXT NOT NULL,created REAL NOT NULL,demo INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS shared_progress(share_id TEXT NOT NULL,user_id TEXT NOT NULL,progress TEXT NOT NULL,
+                    PRIMARY KEY(share_id,user_id));
+            """)
+            db.execute("INSERT OR IGNORE INTO users(id,email,name,provider,created,demo) VALUES('demo-hefeng','hefeng@demo.lecturelab.local','Hefeng','demo',?,1)", (time.time(),))
+            db.execute("INSERT OR IGNORE INTO users(id,email,name,provider,created,demo) VALUES('demo-mia','mia@demo.lecturelab.local','Mia','demo',?,1)", (time.time(),))
+            db.execute("INSERT OR IGNORE INTO collection_owners SELECT id,'demo-hefeng' FROM collections")
+
     def collection_for(self, material_id):
         row = self.one('SELECT collection_id FROM material_collections WHERE material_id=?', (material_id,))
         return row['collection_id'] if row else None
@@ -102,6 +129,8 @@ class Store:
     def add_collection(self, name):
         cid = uid()
         self.execute('INSERT INTO collections VALUES(?,?,?)', (cid, name, time.time()))
+        user = CURRENT_USER.get()
+        self.execute('INSERT INTO collection_owners VALUES(?,?)', (cid, user['id'] if user else 'demo-hefeng'))
         return cid
 
     def collection_materials(self, cid):

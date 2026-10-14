@@ -39,6 +39,13 @@ def test_generation_schema_locks_selected_format(format_, monkeypatch):
     ai.generate({'prompt':'Create four flashcards','format':format_,'count':4,'difficulty':'beginner'},[])
     assert captured['schema'] is generation_schema(format_)
     assert 'authoritative' in captured['system']
+    assert r'\( ... \)' in captured['system']
+    assert r'W^{\mathrm{new}}' in captured['system']
+    assert 'bare scalar numeric string' in captured['system']
+    assert 'After JSON decoding' in captured['system']
+    assert 'standalone' in captured['system']
+    assert 'Do not reveal the computed answer in the prompt' in captured['system']
+    assert 'never rewrite cited source text' in captured['system']
 
 
 def test_question_ids_are_application_assigned():

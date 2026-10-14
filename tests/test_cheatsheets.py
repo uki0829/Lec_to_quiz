@@ -76,7 +76,7 @@ def test_sheet_validation_rejects_unsupported_evidence():
 
 def test_pdf_sheet_saved_sources_followup_and_failures(tmp_path):
     ai = SheetAI()
-    app = create_app(tmp_path, ai=ai, run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, ai=ai, run_jobs=False)
     with TestClient(app) as client:
         c = client.post('/api/collections', json={'name': 'Machine Learning'}).json()['id']
         material, _ = complete(client, app.state.engine, client.post('/api/materials',
@@ -115,7 +115,7 @@ def test_pdf_sheet_saved_sources_followup_and_failures(tmp_path):
     reopened = Store(tmp_path)
     assert len(reopened.quiz(sid)['sections']) == 4
     assert reopened.all('SELECT source_id FROM quiz_sources WHERE quiz_id=?', (sid,))
-    app = create_app(tmp_path, ai=SheetAI(), run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, ai=SheetAI(), run_jobs=False)
     with TestClient(app) as client:
         impact = client.get('/api/materials/' + material['materialId'] + '/deletion-impact').json()
         assert sid in [q['id'] for q in impact['quizzes']]
@@ -146,7 +146,7 @@ def test_sheet_quote_schema_locks_exact_excerpts():
 
 def test_sheet_collection_growth_isolation_and_dependencies(tmp_path):
     ai = SheetAI()
-    app = create_app(tmp_path, ai=ai, run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, ai=ai, run_jobs=False)
     with TestClient(app) as client:
         engine, store = app.state.engine, app.state.store
         c = client.post('/api/collections', json={'name': 'ML'}).json()['id']

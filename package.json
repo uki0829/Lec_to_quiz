@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "bash scripts/start.sh",
-    "test": ".venv/bin/python -m pytest -q && node scripts/check_frontend.mjs",
-    "check": "node --check source/app.js && node --check source/local.js"
+    "test": ".venv/bin/python -m pytest -q && node scripts/check_frontend.mjs && node scripts/check_creator.mjs && node scripts/check_social.mjs && node scripts/check_math.mjs && node scripts/check_practice.mjs",
+    "check": "node --check source/app.js && node --check source/local.js && node --check source/social.js && node --check source/math.js && node --check source/practice.js"
+  },
+  "dependencies": {
+    "katex": "0.19.0"
   }
 }

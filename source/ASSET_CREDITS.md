@@ -17,3 +17,8 @@ Color illustrations: Microsoft Fluent Emoji, official microsoft/fluentui-emoji r
 
 - Quiz audio control: official Lucide volume-2.svg and volume-x.svg, https://lucide.dev/icons/volume-2 and https://lucide.dev/icons/volume-x.
 - Correct/incorrect feedback sounds: original synthesized sine tones using browser Web Audio; no external recordings.
+
+- Account/group controls: official Lucide users.svg, share-2.svg, copy.svg, log-out.svg, mail.svg, user-round.svg; https://github.com/lucide-icons/lucide/tree/main/icons
+- Google sign-in mark: Google-hosted G icon, https://www.gstatic.com/images/branding/product/1x/gsa_48dp.png
+
+- Mathematical rendering: KaTeX 0.19.0 from the official npm katex package; https://katex.org/docs/api. Bundled script, stylesheet, fonts and license are under vendor/katex/.

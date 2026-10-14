@@ -1,0 +1,298 @@
+[
+  {
+    "title": "Gradient descent essentials",
+    "format": "flashcard",
+    "questions": [
+      {
+        "id": "f1",
+        "type": "flashcard",
+        "prompt": "What is the gradient-descent update rule?",
+        "answer": "w_new = w − η ∇L(w)",
+        "explanation": "η is the learning rate, and ∇L(w) is the gradient evaluated at the current parameter value.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "The update is w_new = w - eta * gradient(L(w))."
+        }
+      },
+      {
+        "id": "f2",
+        "type": "flashcard",
+        "prompt": "Why do we subtract the gradient?",
+        "answer": "The gradient points toward local increase, so we step in the opposite direction.",
+        "explanation": "This is a local direction argument; a finite step is not guaranteed to reduce the loss for every learning rate.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "The gradient points toward the steepest local increase"
+        }
+      },
+      {
+        "id": "f3",
+        "type": "flashcard",
+        "prompt": "What is the tradeoff when choosing a learning rate?",
+        "answer": "Small steps may be slow; large steps may overshoot or diverge.",
+        "explanation": "The step size affects both how quickly parameters move and whether updates remain stable.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 2",
+          "quote": "A very small learning rate can make progress slow. A large learning rate may overshoot or diverge."
+        }
+      },
+      {
+        "id": "f4",
+        "type": "flashcard",
+        "prompt": "What separates full-batch, SGD, and mini-batch updates?",
+        "answer": "They use all examples, one sampled example, and a subset of examples respectively.",
+        "explanation": "These choices change how the gradient estimate is calculated.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 3",
+          "quote": "Full-batch gradient descent uses all training examples"
+        }
+      },
+      {
+        "id": "f5",
+        "type": "flashcard",
+        "prompt": "What does a zero gradient tell you?",
+        "answer": "The point is stationary; it does not necessarily establish a global minimum.",
+        "explanation": "The loss landscape needs additional analysis.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "A stationary point has zero gradient but is not necessarily a global minimum."
+        }
+      },
+      {
+        "id": "f6",
+        "type": "flashcard",
+        "prompt": "How do you update a parameter vector?",
+        "answer": "Subtract the learning rate times each corresponding gradient component.",
+        "explanation": "The vector and gradient must have matching dimensions.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 3",
+          "quote": "For a vector w, subtract eta times the gradient component by component."
+        }
+      }
+    ]
+  },
+  {
+    "title": "Gradient descent checkpoint",
+    "format": "mcq",
+    "questions": [
+      {
+        "id": "m1",
+        "type": "mcq",
+        "prompt": "Which update moves opposite to the gradient?",
+        "answer": "w_new = w − η ∇L(w)",
+        "explanation": "The gradient points toward local increase. Subtracting a positive learning rate times the gradient moves in the opposite direction.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "The update is w_new = w - eta * gradient(L(w))."
+        },
+        "options": [
+          "w_new = w + η ∇L(w)",
+          "w_new = w − η ∇L(w)",
+          "w_new = η + ∇L(w)",
+          "w_new = ∇L(w) / η"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "m2",
+        "type": "mcq",
+        "prompt": "For L(w) = w², w = 3, and η = 0.1, what is w after one update?",
+        "answer": "2.4",
+        "explanation": "The gradient is 2w = 6, so the update is 3 − 0.1 × 6 = 2.4.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 2",
+          "quote": "If w = 3 and eta = 0.1, one update gives 3 - 0.1 * 6 = 2.4."
+        },
+        "options": [
+          "3.6",
+          "0.6",
+          "2.4",
+          "2.9"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "m3",
+        "type": "mcq",
+        "prompt": "What can happen when the learning rate is too large?",
+        "answer": "Updates can overshoot or diverge.",
+        "explanation": "A large step can move past a useful region and increase the loss. A larger learning rate is not always faster or better.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 2",
+          "quote": "A large learning rate may overshoot or diverge."
+        },
+        "options": [
+          "Updates always converge faster.",
+          "Updates can overshoot or diverge.",
+          "The gradient always becomes zero.",
+          "The training data becomes larger."
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "m4",
+        "type": "mcq",
+        "prompt": "How does full-batch gradient descent differ from SGD?",
+        "answer": "Full-batch uses all examples; SGD uses one sampled example.",
+        "explanation": "The distinction here is how many examples are used to calculate an update, not whether the model has one or many parameters.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 3",
+          "quote": "Full-batch gradient descent uses all training examples to calculate each gradient. SGD uses one sampled example."
+        },
+        "options": [
+          "Full-batch uses one example; SGD uses all examples.",
+          "They are identical.",
+          "SGD requires zero gradients.",
+          "Full-batch uses all examples; SGD uses one sampled example."
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "m5",
+        "type": "mcq",
+        "prompt": "Does a zero gradient prove that a point is a global minimum?",
+        "answer": "No. It identifies a stationary point.",
+        "explanation": "A stationary point may be a minimum, maximum, or saddle point. The source does not equate zero gradient with global optimality.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "A stationary point has zero gradient but is not necessarily a global minimum."
+        },
+        "options": [
+          "Yes, for every differentiable loss.",
+          "Only if the learning rate is large.",
+          "No. It identifies a stationary point.",
+          "It proves the loss equals zero."
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "m6",
+        "type": "mcq",
+        "prompt": "Given w = [2, −1], gradient = [4, −2], and η = 0.25, what is the updated vector?",
+        "answer": "[1, −0.5]",
+        "explanation": "Apply the update component by component: 2 − 0.25 × 4 = 1; −1 − 0.25 × (−2) = −0.5.",
+        "steps": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 3",
+          "quote": "If w = [2, -1], gradient = [4, -2], and eta = 0.25, the updated vector is [1, -0.5]."
+        },
+        "options": [
+          "[3, −1.5]",
+          "[1, −0.5]",
+          "[1, −1.5]",
+          "[−2, 1]"
+        ],
+        "correctIndex": 1
+      }
+    ]
+  },
+  {
+    "title": "Gradient descent",
+    "format": "cheatsheet",
+    "mode": "sample",
+    "questions": [],
+    "sections": [
+      {
+        "id": "s0",
+        "heading": "What is the gradient-descent update rule?",
+        "points": [
+          "w_new = w − η ∇L(w)"
+        ],
+        "formulas": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "The update is w_new = w - eta * gradient(L(w))."
+        }
+      },
+      {
+        "id": "s1",
+        "heading": "Why do we subtract the gradient?",
+        "points": [
+          "The gradient points toward local increase, so we step in the opposite direction."
+        ],
+        "formulas": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "The gradient points toward the steepest local increase"
+        }
+      },
+      {
+        "id": "s2",
+        "heading": "What is the tradeoff when choosing a learning rate?",
+        "points": [
+          "Small steps may be slow; large steps may overshoot or diverge."
+        ],
+        "formulas": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 2",
+          "quote": "A very small learning rate can make progress slow. A large learning rate may overshoot or diverge."
+        }
+      },
+      {
+        "id": "s3",
+        "heading": "What separates full-batch, SGD, and mini-batch updates?",
+        "points": [
+          "They use all examples, one sampled example, and a subset of examples respectively."
+        ],
+        "formulas": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 3",
+          "quote": "Full-batch gradient descent uses all training examples"
+        }
+      },
+      {
+        "id": "s4",
+        "heading": "What does a zero gradient tell you?",
+        "points": [
+          "The point is stationary; it does not necessarily establish a global minimum."
+        ],
+        "formulas": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 1",
+          "quote": "A stationary point has zero gradient but is not necessarily a global minimum."
+        }
+      },
+      {
+        "id": "s5",
+        "heading": "How do you update a parameter vector?",
+        "points": [
+          "Subtract the learning rate times each corresponding gradient component."
+        ],
+        "formulas": [],
+        "source": {
+          "name": "Sample gradient-descent lecture",
+          "locator": "Page 3",
+          "quote": "For a vector w, subtract eta times the gradient component by component."
+        }
+      }
+    ]
+  }
+]

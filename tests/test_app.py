@@ -68,7 +68,7 @@ class FakeAI:
 @pytest.fixture
 def setup(tmp_path):
     ai = FakeAI()
-    app = create_app(tmp_path, ai=ai, run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, ai=ai, run_jobs=False)
     with TestClient(app) as client:
         yield client, app.state.store, app.state.engine, ai
 
@@ -192,7 +192,7 @@ def test_restart_marks_jobs_interrupted(tmp_path):
     s = Store(tmp_path)
     s.add_material("m", [], NOTES)
     jid = s.add_job("material", "m")
-    app = create_app(tmp_path, ai=FakeAI(), run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, ai=FakeAI(), run_jobs=False)
     with TestClient(app):
         assert app.state.store.job(jid)["status"] == "interrupted"
 
@@ -241,7 +241,7 @@ def test_generated_reference_and_answer_validation():
 
 def test_missing_key(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    app = create_app(tmp_path, run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, run_jobs=False)
     with TestClient(app) as client:
         upload = client.post('/api/materials', data={'notes': NOTES}).json()
         app.state.engine.run(upload['jobId'])
@@ -284,3 +284,14 @@ def test_real_30_minute_media_chunking_with_fixture_ai(setup, tmp_path, kind):
     original = client.get(cited['url']).json()
     assert cited['start'] == original['start']
     assert 0 <= cited['start'] < 1800
+
+
+def test_study_page_routes_serve_shell_without_set_data(setup):
+    client, store, engine, ai = setup
+    for path in ('/study/local', '/study/quiz/not-a-real-set', '/study/shared/not-a-real-share'):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers['content-type'].startswith('text/html')
+        assert '/static/practice.js' in response.text
+        assert 'not-a-real-set' not in response.text
+    assert client.get('/api/quizzes/not-a-real-set').status_code == 404

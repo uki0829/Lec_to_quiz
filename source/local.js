@@ -14,17 +14,24 @@ async function api(url,options={}) {
 }
 function saveSnapshot(review=$('#summary').hidden===false) {
   try {const q=quiz?{...quiz,progress:{index,answers:structuredClone(answers),review}}:null;
-    localStorage.setItem('lecture-lab-state',JSON.stringify({collectionId,parentQuizId,parentQuizTitle,materialId,activeJob,pendingGeneration,
-      view:currentView,libraryTab:activeLibraryTab,lastFailedJob,creator:{open:$('#composer-dialog').open,step:composerStep,materialId:composerMaterialId,title:composerLoadedTitle,jobId:composerJobId,heading:$('#composer-title').textContent},quiz:q?.id?{id:q.id,mode:q.mode,progress:q.progress}:q,format,request:$('#request').value,count:$('#count').value,difficulty:$('#difficulty').value}));
+    localStorage.setItem(typeof studyStateKey==='function'?studyStateKey():'lecture-lab-state',JSON.stringify({collectionId,parentQuizId,parentQuizTitle,materialId,activeJob,pendingGeneration,
+      view:currentView,libraryTab:activeLibraryTab,lastFailedJob,creator:{open:$('#composer-dialog').open,step:composerStep,materialId:composerMaterialId,title:composerLoadedTitle,jobId:composerJobId,heading:$('#composer-title').textContent},quiz:q?.id?{id:q.id,mode:q.mode,shareId:q.shareId,progress:q.progress}:q,format,request:$('#request').value,count:$('#count').value,difficulty:$('#difficulty').value}));
   }catch{}
 }
 function scheduleSave(review=false) {
-  clearTimeout(saveTimer);saveSnapshot(review);if(!quiz?.id||quiz.mode!=='generated'||quiz.format==='cheatsheet')return;
+  clearTimeout(saveTimer);saveSnapshot(review);if(!quiz?.id||!['generated','shared'].includes(quiz.mode)||quiz.format==='cheatsheet')return;
   const id=quiz.id,progress={index,answers:structuredClone(answers),review};
   const saved=savedSets.find(q=>q.id===id);
   if(saved)saved.answeredCount=Object.values(answers).filter(a=>a.submitted).length;
-  saveTimer=setTimeout(()=>api('/api/quizzes/'+id+'/progress',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(progress)})
+  const progressUrl=quiz.mode==='shared'?'/api/shared-sets/'+quiz.shareId+'/progress':'/api/quizzes/'+id+'/progress';
+  saveTimer=setTimeout(()=>api(progressUrl,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(progress)})
     .catch(()=>message('Progress could not be saved. Your quiz remains available.',true)),250);
+}
+async function flushPracticeProgress(){
+  clearTimeout(saveTimer);saveSnapshot();
+  if(!quiz?.id||!['generated','shared'].includes(quiz.mode)||quiz.format==='cheatsheet')return;
+  const url=quiz.mode==='shared'?'/api/shared-sets/'+quiz.shareId+'/progress':'/api/quizzes/'+quiz.id+'/progress';
+  await api(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({index,answers:structuredClone(answers),review:!$('#summary').hidden})});
 }
 function setBusy(value) {
   busy=value;$('#composer-processing').hidden=!value;
@@ -36,7 +43,7 @@ function setBusy(value) {
   $('#job-actions').hidden=!(value||lastFailedJob);$('#cancel-job').hidden=!activeJob;
   if(!value){$('#job-panel').hidden=!activeJob&&!lastFailedJob;if(lastFailedJob){$('#retry-job').hidden=false;$('#edit-failed').hidden=false;}}
   if(value){$('#edit-failed').hidden=true;$('#job-panel').hidden=false;$('#job-panel').classList.remove('failed');}
-  updateComposerState();renderQuestionBank();
+  updateComposerState();renderQuestionBank();fitQuizStage();
 }
 async function checkConnection() {
   try {connection=await api('/api/config');$('#connection-status').textContent=connection.connected?'OpenAI connected':'Add OPENAI_API_KEY to .env, then restart.';
@@ -52,7 +59,7 @@ function updateFollowup() {
 }
 function updateQuizContext(q) {
   const live=q.id&&q.mode==='generated';$('#quiz-context').hidden=!live;$('#build-followup').hidden=!live;showView('study');
-  $('#original-request').textContent=q.request?.submitted?.prompt||q.request?.resolved?.prompt||'The original request was not recorded for this older quiz.';
+  $('#original-request').innerHTML=mathHtml(q.request?.submitted?.prompt||q.request?.resolved?.prompt||'The original request was not recorded for this older quiz.');
 }
 $('#clear-followup').onclick=()=>{parentQuizId=null;parentQuizTitle='';updateFollowup();saveSnapshot();};
 $('#build-followup').onclick=async()=>{
@@ -99,7 +106,7 @@ function renderQuizGrid(){
   const selectedType=$('#set-format-filter').value;
   const sets=savedSets.filter(q=>(!selectedType||q.format===selectedType)&&(q.title+' '+formatName(q.format)).toLowerCase().includes(search));
   $('#sets-count').textContent=savedSets.length;
-  $('#quiz-grid').innerHTML=sets.map(q=>'<button class="quiz-card" data-quiz="'+esc(q.id)+'"><span class="card-top"><span class="card-format">'+icon(formatIcon(q.format))+esc(formatName(q.format))+'</span><span class="card-count">'+(q.format==='cheatsheet'?q.sectionCount+' sections':q.questionCount+' questions')+'</span></span><h3>'+esc(q.title)+'</h3><span class="card-cta"><span>'+ (q.format==='cheatsheet'?'Open sheet':q.answeredCount?'Continue · '+q.answeredCount+'/'+q.questionCount:'Study')+'</span>'+icon('arrow-right')+'</span></button>').join('')+
+  $('#quiz-grid').innerHTML=sets.map(q=>'<button class="quiz-card" data-quiz="'+esc(q.id)+'"><span class="card-top"><span class="card-format">'+icon(formatIcon(q.format))+esc(formatName(q.format))+'</span><span class="card-count">'+(q.format==='cheatsheet'?q.sectionCount+' sections':q.questionCount+' questions')+'</span></span><h3>'+mathHtml(q.title)+'</h3><span class="card-cta"><span>'+ (q.format==='cheatsheet'?'Open sheet':q.answeredCount?'Continue · '+q.answeredCount+'/'+q.questionCount:'Study')+'</span>'+icon('arrow-right')+'</span></button>').join('')+
     (!search?'<button class="quiz-card new-set-card" id="new-set-card">'+icon('plus')+'<strong>Create study set</strong></button>':!sets.length?'<p class="empty-results">No study sets match that search.</p>':'');
   $('#quiz-grid').querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>openQuiz(b.dataset.quiz));
   $('#new-set-card')?.addEventListener('click',()=>openComposer());
@@ -122,7 +129,7 @@ async function refreshCollection() {
   const quizzesKey=cid+JSON.stringify(saved.quizzes.map(q=>({id:q.id,title:q.title,format:q.format,count:q.questionCount,sections:q.sectionCount,answered:q.answeredCount})));
   if(quizzesKey!==renderedQuizzesKey){renderedQuizzesKey=quizzesKey;
     $('#saved-quizzes').innerHTML='<option value="">Choose a set</option>'+saved.quizzes.map(q=>'<option value="'+esc(q.id)+'">'+esc(formatName(q.format))+' · '+esc(q.title)+'</option>').join('');
-    const parentOptions='<option value="">No previous set</option>'+savedSets.map(q=>'<option value="'+esc(q.id)+'">Build on: '+esc(q.title)+'</option>').join('');
+    const parentOptions='<option value="">No previous set</option>'+savedSets.map(q=>'<option value="'+esc(q.id)+'">Build on: '+mathHtml(q.title)+'</option>').join('');
     $('#composer-parent').innerHTML=parentOptions;$('#composer-parent').value=parentQuizId||'';renderQuizGrid();
   }
   $('#saved-quizzes').value=quiz?.collectionId===collectionId?quiz.id||'':'';
@@ -289,14 +296,14 @@ $('#retry-job').onclick=async()=>{if(!lastFailedJob||busy)return;
 async function openSource(id) {
   $('#source-dialog').showModal();$('#source-content').textContent='Loading source…';
   try {
-    if(id==='sample'){$('#source-title').textContent='Sample gradient-descent lecture';$('#source-content').innerHTML='<p class="dialog-note">Included sample lecture. </p><div class="extracted-text">'+esc(lecture)+'</div>';return;}
+    if(id==='sample'){$('#source-title').textContent='Sample gradient-descent lecture';$('#source-content').innerHTML='<p class="dialog-note">Included sample lecture. </p><div class="extracted-text">'+mathHtml(lecture)+'</div>';return;}
     const s=await api('/api/sources/'+encodeURIComponent(id));$('#source-title').textContent=s.name+' · '+s.locator;
     let html='';
     if(s.kind==='pdf')html='<img alt="Original lecture PDF page '+s.page+'" src="'+esc(s.previewUrl)+'"><p><a href="'+esc(s.fileUrl)+'" download="'+esc(s.name)+'">Download original PDF</a></p>';
     else if(s.kind==='image')html='<img alt="Original lecture image" src="'+esc(s.fileUrl)+'">';
     else if(['audio','video'].includes(s.kind))html='<'+s.kind+' id="source-player" controls preload="metadata" src="'+esc(s.fileUrl)+'"></'+s.kind+'>'+(s.frameUrl?'<p class="dialog-note">Sampled slide frame</p><img alt="Slide frame at the cited timestamp" src="'+esc(s.frameUrl)+'">':'');
     if(s.uncertainty)html+='<details><summary>Source notes</summary><p>'+esc(s.uncertainty)+'</p></details>';
-    html+='<details open><summary>Extracted content</summary><div class="extracted-text">'+esc(s.text)+'</div></details>';
+    html+='<details open><summary>Extracted content</summary><div class="extracted-text">'+mathHtml(s.text)+'</div></details>';
     $('#source-content').innerHTML=html;
     const player=$('#source-player');if(player)player.addEventListener('loadedmetadata',()=>{player.currentTime=s.start||0;},{once:true});
   }catch(err){$('#source-content').textContent=err.message;}
@@ -312,7 +319,7 @@ function applyToast(text,error){
   for(const id of ['composer-message','upload-message']){const el=$('#'+id);el.className=text?'notice'+(error?' error':''):'';el.textContent=text;}
   if(text&&!error)toastTimer=setTimeout(()=>{for(const id of ['setup-message','composer-message','upload-message'])$('#'+id).textContent='';},7000);
 }
-function showView(view){currentView=view;$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';}
+function showView(view){if(view!=='study'){cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='groups'?'false':'page');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='study')fitQuizStage();}
 function filterMaterials(){
   const search=$('#search-sets').value.trim().toLowerCase();
   const cards=Array.from($('#collection-materials').querySelectorAll('[data-material-title]'));
@@ -367,7 +374,7 @@ function renderQuestionBank(){
   const search=$('#search-sets').value.trim().toLowerCase();
   const rows=bankRows.filter(q=>(q.prompt+' '+q.quizTitle).toLowerCase().includes(search));
   $('#bank-count').textContent=bankRows.length;$('#practice-bank').disabled=!rows.length||busy;
-  $('#bank-grid').innerHTML=rows.map(q=>'<button class="bank-card" data-bank-quiz="'+esc(q.originQuizId)+'" data-bank-question="'+esc(q.originQuestionId)+'">'+icon('star')+'<span><strong>'+esc(q.prompt)+'</strong><small>'+esc(q.quizTitle)+'</small></span>'+icon('arrow-right')+'</button>').join('')||'<p class="empty-results">'+(search?'No starred cards match.':'Star cards to practise later.')+'</p>';
+  $('#bank-grid').innerHTML=rows.map(q=>'<button class="bank-card" data-bank-quiz="'+esc(q.originQuizId)+'" data-bank-question="'+esc(q.originQuestionId)+'">'+icon('star')+'<span><strong>'+mathHtml(q.prompt)+'</strong><small>'+esc(q.quizTitle)+'</small></span>'+icon('arrow-right')+'</button>').join('')||'<p class="empty-results">'+(search?'No starred cards match.':'Star cards to practise later.')+'</p>';
   $('#bank-grid').querySelectorAll('[data-bank-quiz]').forEach(b=>b.onclick=()=>practiceQuestionBank(b.dataset.bankQuiz,b.dataset.bankQuestion));
 }
 function practiceQuestionBank(quizId=null,questionId=null){
@@ -476,8 +483,9 @@ $('#composer-files').onchange=e=>{addFiles(e.target.files);e.target.value='';};
 $('#edit-failed').onclick=async()=>{try{if(!lastFailedJob)return openComposer();const job=await api('/api/jobs/'+lastFailedJob);const p=(await api('/api/jobs/'+lastFailedJob+'/request')).request||{};$('#request').value=p.prompt||$('#request').value;if(p.format)document.querySelector('[data-format="'+p.format+'"]').click();$('#count').value=String(p.count||6);$('#difficulty').value=p.difficulty||'intermediate';parentQuizId=p.parentQuizId||null;parentQuizTitle=parentQuizId?savedSets.find(q=>q.id===parentQuizId)?.title||'Previous set':'';updateFollowup();openComposer(null,true);}catch(err){message(err.message,true);}};
 
 async function boot() {
+  if(typeof startSession==='function'&&!currentUser)return startSession();
   setBusy(true);
-  let state;try{state=JSON.parse(localStorage.getItem('lecture-lab-state')||'null');}catch{}
+  let state;try{state=JSON.parse(localStorage.getItem(typeof studyStateKey==='function'?studyStateKey():'lecture-lab-state')||'null');}catch{}
   try {await checkConnection();
     if(state?.collectionId)collectionId=state.collectionId;
     else if(state?.materialId){try{collectionId=(await api('/api/materials/'+state.materialId)).collectionId;}catch{}}
@@ -486,9 +494,9 @@ async function boot() {
     if(state){$('#request').value=state.request||'';$('#count').value=state.count||'6';$('#difficulty').value=state.difficulty||'intermediate';
       format=['mcq','flashcard','calculation','cheatsheet'].includes(state.format)?state.format:'mcq';
       document.querySelectorAll('[data-format]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.format===format)));
-      if(state.quiz){try{let q=state.quiz.id?await api('/api/quizzes/'+state.quiz.id):state.quiz;q=validateImported(q);if(state.quiz.progress)q.progress=state.quiz.progress;startQuiz(q);if(q.progress?.review)showSummary();}catch{message('Quiz unavailable. Choose another saved set.',true);}}
+      if(state.quiz){try{let q=state.quiz.shareId?await api('/api/shared-sets/'+state.quiz.shareId):state.quiz.id?await api('/api/quizzes/'+state.quiz.id):state.quiz;q=validateImported(q);if(state.quiz.progress)q.progress=state.quiz.progress;startQuiz(q);if(q.progress?.review)showSummary();}catch{message('Quiz unavailable. Choose another saved set.',true);}}
       if(state.parentQuizId){try{const p=await api('/api/quizzes/'+state.parentQuizId);if(p.collectionId===collectionId){parentQuizId=p.id;parentQuizTitle=p.title;updateFollowup();}}catch{}}
-      showView(state.view||'library');setLibraryTab(state.libraryTab||'sets');
+      showView(state.view||'library');setLibraryTab(state.libraryTab||'sets');if(state.view==='groups'&&typeof showGroups==='function')await showGroups();
       if(state.creator?.open){const c=state.creator;$('#composer-title').textContent=c.heading||'Create study set';composerMaterialId=c.materialId||null;composerJobId=c.jobId||null;composerLoadedTitle=c.title||'';
         if(composerMaterialId){try{const m=await api('/api/materials/'+composerMaterialId);composerReady=m.collectionId===collectionId&&m.searchReady;}catch{composerMaterialId=null;composerJobId=null;}}
         else composerReady=Boolean(currentCollection?.materials.some(m=>m.searchReady));
@@ -502,8 +510,8 @@ async function boot() {
     if(state?.creator?.open&&composerJobId&&!activeJob){const j=await api('/api/jobs/'+composerJobId);if(['failed','cancelled','interrupted'].includes(j.status))lastFailedJob=j.id;else if(j.status==='completed')await finishComposerMaterial(composerMaterialId);}
     updateComposerState();
     if(!activeJob&&currentCollection?.latestQuizJob&&['failed','cancelled','interrupted'].includes(currentCollection.latestQuizJob.status)){lastFailedJob=currentCollection.latestQuizJob.id;const old=await api('/api/jobs/'+lastFailedJob);showJob(old);$('#job-panel').classList.add('failed');$('#job-actions').hidden=false;$('#cancel-job').hidden=true;$('#retry-job').hidden=false;$('#edit-failed').hidden=false;}
-  }catch(err){message(err.message,true);}finally{pendingGeneration=null;if(!activeJob)setBusy(false);if(lastFailedJob){$('#job-actions').hidden=false;$('#retry-job').hidden=false;$('#cancel-job').hidden=true;$('#edit-failed').hidden=false;}}
+  }catch(err){message(err.message,true);}finally{pendingGeneration=null;if(!activeJob)setBusy(false);if(lastFailedJob){$('#job-actions').hidden=false;$('#retry-job').hidden=false;$('#cancel-job').hidden=true;$('#edit-failed').hidden=false;}if(typeof finishPracticeBoot==='function')await finishPracticeBoot();}
 }
 window.addEventListener('pagehide',()=>saveSnapshot(!$('#summary').hidden));
-setInterval(()=>{if(!busy&&collectionId)refreshCollection().catch(()=>{});},4000);
+setInterval(()=>{if(!busy&&collectionId&&(typeof currentUser==='undefined'||currentUser))refreshCollection().catch(()=>{});},4000);
 boot();

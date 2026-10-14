@@ -20,7 +20,7 @@ class HintAI(FakeAI):
 
 @pytest.fixture
 def bank(tmp_path):
-    ai=HintAI();app=create_app(tmp_path,ai=ai,run_jobs=False)
+    ai=HintAI();app=create_app(tmp_path,auth_required=False,ai=ai,run_jobs=False)
     with TestClient(app) as client:
         cid=collection(client);mid=add(client,app.state.engine,cid)
         q=quiz_request(client,app.state.engine,cid,format='flashcard',count=4)

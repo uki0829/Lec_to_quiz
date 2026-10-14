@@ -10,7 +10,7 @@ from test_cheatsheets import SheetAI
 
 @pytest.fixture
 def folders(tmp_path):
-    app = create_app(tmp_path, ai=SheetAI(), run_jobs=False)
+    app = create_app(tmp_path,auth_required=False, ai=SheetAI(), run_jobs=False)
     with TestClient(app) as client:
         yield client, app.state.store, app.state.engine
 
