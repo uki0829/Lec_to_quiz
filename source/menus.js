@@ -88,7 +88,7 @@
       control.panel.innerHTML=choices(control).map(c=>'<div id="'+select.id+'-option-'+c.index+'" role="option" aria-selected="'+String(select.value===c.option.value)+'" aria-disabled="'+String(c.disabled)+'" data-index="'+c.index+'">'+asset(optionIcon(control,c.option))+'<span class="menu-option-copy"><span>'+esc(c.option.textContent)+'</span>'+(c.option.dataset.meta?'<small>'+esc(c.option.dataset.meta)+'</small>':'')+'</span><span class="menu-check">'+asset('check')+'</span></div>').join('');
       control.panel.querySelectorAll('[role="option"]').forEach(el=>{el.onpointerdown=e=>e.preventDefault();el.onclick=()=>choose(control,Number(el.dataset.index));el.onpointermove=()=>{if(el.getAttribute('aria-disabled')!=='true')activate(control,Number(el.dataset.index));};});
     }
-    if(openControl===control){if(select.hidden||select.disabled)closeMenu();else {position(control);activate(control,control.active);}}
+    if(openControl===control){if(select.hidden||select.disabled||!control.trigger.getClientRects().length)closeMenu();else {position(control);activate(control,control.active);}}
   }
   function enhance(select){
     const wrapper=document.createElement('div');wrapper.className='select-control';wrapper.dataset.select=select.id;
@@ -108,7 +108,11 @@
   function syncAll(){controls.forEach(sync);}
   document.querySelectorAll('[data-styled-select]').forEach(enhance);
   document.addEventListener('pointerdown',event=>{if(openControl&&!openControl.wrapper.contains(event.target)&&!openControl.panel.contains(event.target))closeMenu();});
-  document.addEventListener('scroll',event=>{if(openControl&&!openControl.panel.contains(event.target))closeMenu();},true);
+  document.addEventListener('scroll',event=>{
+    if(!openControl||openControl.panel.contains(event.target))return;
+    const rect=openControl.trigger.getBoundingClientRect();
+    if(!openControl.trigger.getClientRects().length||rect.bottom<0||rect.top>innerHeight)closeMenu();else position(openControl);
+  },true);
   document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('close',closeMenu));
   window.addEventListener('resize',()=>{if(openControl)position(openControl);});
   window.syncMenus=syncAll;

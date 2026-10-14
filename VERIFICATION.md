@@ -137,3 +137,51 @@ A genuine authored three-page PDF was uploaded through the local multipart API i
 The first live attempt exposed rewritten source quotations. A draft schema using full multiline quotation literals was rejected by the API. The final schema uses bounded app-assigned excerpt IDs instead. IDs are validated against the cited chunk; the application inserts exact source text. The successful live retry retained strict quotation/source validation and reused the processed PDF.
 
 The browser Export action created Downloads/lecture-lab-cheatsheet.json. Its sections exactly matched the saved sheet and passed frontend import validation. The browser download-event waiter timed out, but the actual file was verified; a fresh preview tab recovered browser control. A fresh tab restored the saved sheet, and Library navigation, set-type filtering, and filename search worked. At 390×844, document width was 390 and sheet content width was 358, with no horizontal overflow. The viewport override was reset. Print is wired to the browser dialog with print styles; the print dialog/PDF output was not exercised. File-picker automation remains outside the verified browser journey; real PDF upload was through the existing API.
+
+
+## Create new, Study folders, and styled menus — 2026-10-14
+
+Replaced the Library page title and home/back navigation labels with Create new. Cheat Sheet tile text is white (verified computed RGB 255,255,255), with a darker gold background for readability. The sidebar now uses Study folders, a seven-word course-grouping hint, New folder, readable names, file/note counts, and file-type labels for filename-based folder names. Stored names and IDs are retained; filename cleanup is a display label only. The collections listing now includes fileCount and noteCount computed from actual uploaded records.
+
+Five visible selects are enhanced by source/menus.js: main study folder, set type, creator study folder, previous set, and difficulty. Native select values and existing change handlers remain authoritative. Menus use app styling, selected checkmarks, bounded scrolling, viewport-aware placement, labelled combobox/listbox roles, typeahead, arrows, Home/End, Enter/Space, Escape, and Tab. They reflect dynamic options, visibility, and disabled attributes. Popups inside a modal are attached to that dialog.
+
+Browser checks covered folder changes, type filtering via typeahead, previous-set context, difficulty selection, Escape without closing the creator, and Tab moving to the next control. An issue where focus scrolling closed a menu was corrected by repositioning it rather than closing it during in-view scroll. Folder editor labels were inspected without creating test folders. At 390×844, page width was 390; the folder menu spanned x=16–374 and y=450.9–750.9, inside the viewport. New folder and the folder strip were visible on mobile. Materials hides the type-filter wrapper. The viewport override was reset. Existing frontend creator, grading, and sheet checks and JS syntax checks passed. This update did not request new AI generation.
+
+The final backend regression run passed all 38 tests. Final previews are saved as lecture-lab-create-new.png and lecture-lab-create-new-styled-menus.png in the workspace output folder.
+
+
+## Compact home and folder deletion — 2026-10-14
+
+Removed the noninteractive Create new hero above the tool tiles and the header AI ready/Local labels. Kept the actual Create new buttons and expandable AI connection settings. The Cheat Sheet tile is violet (#6252bd) with white text, matching the cool blue/purple card palette.
+
+Every study folder has a separate labelled trash button. A custom dialog lists the affected material sets and saved quizzes/cheat sheets. Cancel receives initial focus; Escape cancels. Deletion removes folder membership, uploads, extracted sources, chunk metadata, saved sets, requests, and jobs transactionally in SQLite, then removes upload directories and cleans vectors. Vector tombstones survive failed cleanup; SQLite excludes stale vectors immediately. Active material, indexing, or generation jobs prevent deletion. A revision check rejects confirmations made before new content or a rename. Upload commits recheck folder existence so an upload streaming during deletion cannot recreate the deleted folder. Existing work in other folders is retained.
+
+Eight fixture-based deletion tests cover a populated folder with PDF files, notes, a quiz and cheat sheet; unrelated source-backed practice; restart persistence; active extraction/indexing/generation; cancellation boundaries; stale previews and renames; empty/missing folders; vector cleanup recovery; and concurrent upload commit. Frontend checks cover dependent-state cleanup, preserved unrelated practice, stale-preview errors, and cancellation, alongside existing creator/grading/sheet checks.
+
+Browser verification opened the real Cheat Sheet Demo deletion preview and cancelled it. Its PDF and saved cheat sheet remained available. Mobile (390×844) page/content widths were both 390; the dialog client/content widths were both 368. Escape restored focus to the trash button. Computed tile background was RGB 98,82,189 and text RGB 255,255,255. The viewport override was reset. No user folders were deleted during browser verification, and no new AI requests were needed.
+
+Final regression: all 46 Python tests passed, along with frontend creator, folder-state, grading, cheat-sheet, and JavaScript syntax checks. The running local server was restarted with the final backend changes. Preview: output/lecture-lab-folders-delete.png in the portfolio workspace.
+
+
+## PDF generation source-reference fix — 2026-10-14
+
+The user's 29-page INFO 4555/5556 data-warehousing PDF extracted and indexed successfully. Its first generation failed during source selection (invalid IDs); its retry failed during flashcard validation (a source reference outside the selected chunks). Selection and non-cheat-sheet question schemas had unconstrained reference strings. The frontend collapsed the latter into a generic validation message.
+
+Source selection now restricts IDs to the retrieved snapshot. Quiz generation chooses short application-assigned evidence IDs. Each ID binds one exact source excerpt to its chunk, so the model does not independently reconstruct opaque chunk IDs or rewrite quotes. Validation binds the source/page and still rejects unsupported evidence, wrong counts/formats, inconsistent answers, and invalid arithmetic. Existing verbatim-quote fixture contracts and the cheat-sheet excerpt mechanism remain supported. Frontend failures now identify source-check problems or show the specific validation reason. This does not establish automatic factual correctness: explanations and supporting originals remain inspectable.
+
+The implementation uses supported Structured Outputs enums, verified against official documentation: https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas. Evidence text stays in the input; only short IDs appear in the new quiz enum.
+
+Live retry of the exact original flashcard request succeeded, reusing the existing extraction and embeddings. Job 60a5f9b03c9d4c858d563eb44ae694b5 saved quiz ddab8fc0c53448f591f8601fdd560ec7: six flashcards citing pages 2, 3, 6, 15, 8, and 18. All six quotes were checked against stored source text; all six PDF page previews returned PNGs. Browser checks exercised reveal, source quotation, original page 2, recalled/not-recalled grading, unfinished review, retry, and progress restoration after refresh.
+
+A second generation through the browser's Quiz tile and saved-lecture shortcut created six MCQs from the same real PDF, using the request for data warehousing, OLTP/OLAP, dimensional modeling, fact tables, and measures. Job fd347da2b30345008f1e43ab7b65bd61 saved quiz f438be090fda4c9c9f6998ac072243d9, citing pages 5, 6, 11, 20, 21, and 18. Incorrect OLTP feedback and correct OLAP feedback worked, with page 6's exact supporting text visible. Both generated sets remain saved in the existing lecture folder.
+
+A separate temporary local application completed a fresh upload of samples/gradient-descent.pdf, real OpenAI page extraction, embeddings, and four calculation questions. Restricted arithmetic validation passed. Hand-checks: 5−0.2×3=4.4; 2×7=14; (1−2×0.25)×4=2; and a zero gradient leaves 9 unchanged. Temporary test data was removed; user uploads and saved sets were retained.
+
+All 50 Python tests passed. New tests enforce retrieved-only source selection and evidence/source/page binding across MCQ, flashcard, and calculation generation; they reject fabricated, conflicting, or stale evidence IDs. Existing frontend creator, folder-state, grading, cheat-sheet checks and JS syntax checks passed. Browser screenshot: output/lecture-lab-pdf-generation-fixed.png in the portfolio workspace. No new recording or image tests were repeated because their extraction paths were unchanged.
+
+
+## Rename prominence and reading contrast — 2026-10-14
+
+Rename folder now uses a filled blue button, light border, full label, official Lucide Pencil icon, and a 44px minimum height. Opening the button's editor was verified without changing any folder name. Body text now uses weight 500 with brighter foreground/muted tokens; quiz options and inputs use 550. Source quotations, explanations, menu metadata, folder counts, and upload hints received targeted contrast/weight updates. Light cheat-sheet panels keep their dark foregrounds.
+
+The desktop page was visually inspected. At 390×844, page and content widths both measured 390. Rename folder measured approximately 148×44px and remained beside Add materials. The viewport override was reset. These were HTML/CSS/asset changes; no backend or generation changes or new API requests were made. Preview: output/lecture-lab-readable-text.png in the portfolio workspace.

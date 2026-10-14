@@ -96,3 +96,28 @@ assert.equal(document.querySelector('#search-sets').disabled,false);
 assert.equal(document.querySelector('#set-format-filter').hidden,true);
 assert.equal(cards[0].hidden,false);assert.equal(cards[1].hidden,true);
 console.log('Library checks passed: sheet counts, type filter, material search, and cheat sheet settings.');
+// Folder deletion clears only dependent work and resets a removed bound lecture.
+run(`
+collectionRows=[{id:'gone',name:'Old course'},{id:'kept',name:'Another course'}];collectionId='gone';
+quiz={id:'removed-quiz',mode:'generated'};answers={q0:{value:1}};parentQuizId='removed-quiz';parentQuizTitle='Old set';
+materialId='removed-material';composerMaterialId='removed-material';composerReady=true;composerStep='options';lastFailedJob='removed-job';
+folderDeletion={id:'gone',revision:'r1'};$('#delete-folder-dialog').showModal();
+api=async(url,options)=>{calls.push({url,options});return {deletedMaterialIds:['removed-material'],deletedQuizIds:['removed-quiz'],deletedJobIds:['removed-job']}};
+refreshLibrary=async()=>{collectionRows=collectionRows.filter(c=>c.id!=='gone')};
+`);
+await run("$('#confirm-delete-folder').onclick()");
+assert.equal(run('collectionId'),'kept');assert.equal(run('quiz'),null);
+assert.equal(run('parentQuizId'),null);assert.equal(run('materialId'),null);
+assert.equal(run('composerStep'),'upload');assert.equal(run('composerReady'),false);
+assert.equal(run('lastFailedJob'),null);assert.equal(document.querySelector('#delete-folder-dialog').open,false);
+// Deleting another folder preserves active practice. Failure preserves all state.
+run("collectionId='kept';quiz={id:'keep-quiz',mode:'generated'};answers={q0:{value:2}};folderDeletion={id:'gone',revision:'r2'};$('#delete-folder-dialog').showModal();");
+await run("$('#confirm-delete-folder').onclick()");
+assert.equal(run('quiz.id'),'keep-quiz');assert.equal(run('answers.q0.value'),2);
+run("folderDeletion={id:'kept',revision:'stale'};$('#delete-folder-dialog').showModal();api=async()=>{throw Error('Folder contents changed. Close and reopen the deletion preview.');}");
+await run("$('#confirm-delete-folder').onclick()");
+assert.equal(run('collectionId'),'kept');assert.equal(run('quiz.id'),'keep-quiz');
+assert.equal(document.querySelector('#delete-folder-dialog').open,true);
+assert.match(document.querySelector('#delete-folder-error').textContent,/changed/);
+run("closeFolderDeletion()");assert.equal(document.querySelector('#delete-folder-dialog').open,false);
+console.log('Folder UI checks passed: dependent-state cleanup, preserved unrelated practice, stale-preview errors, and cancellation.');

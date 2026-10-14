@@ -10,3 +10,5 @@ Color illustrations: Microsoft Fluent Emoji, official microsoft/fluentui-emoji r
 - hero: https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Open%20book/3D/open_book_3d.png
 
 - cheatsheet: https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Spiral%20notepad/3D/spiral_notepad_3d.png
+
+- Rename folder: Lucide Pencil SVG, https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/pencil.svg

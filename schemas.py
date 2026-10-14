@@ -107,6 +107,54 @@ def generation_schema(format_):
                         questions=(list[question], ...))
 
 
+def source_selection_schema(sources):
+    """A selection cannot invent a source outside the retrieved snapshot."""
+    if not sources:
+        return Selection
+    ids = tuple(dict.fromkeys(s['id'] for s in sources))
+    return create_model('SourceSelection', __base__=Selection,
+                        sourceIds=(list[Literal[ids]], ...))
+
+
+def quiz_evidence(sources):
+    """Short request-local IDs bind an exact excerpt to its original chunk."""
+    evidence = []
+    for source in sources:
+        for excerpt in sheet_excerpts(source):
+            evidence.append({'id': 'e' + str(len(evidence)), 'sourceId': source['id'],
+                             'text': excerpt['text']})
+    return evidence
+
+
+def cited_quiz_schema(format_, sources):
+    if not sources:
+        return generation_schema(format_)
+    base = generation_schema(format_)
+    question_base = base.model_fields['questions'].annotation.__args__[0]
+    fields = {name: (field.annotation, field) for name, field in question_base.model_fields.items()
+              if name not in ('sourceId', 'quote')}
+    ids = tuple(e['id'] for e in quiz_evidence(sources))
+    question = create_model('CitedQuestion_' + format_, __base__=StrictModel,
+                            evidenceId=(Literal[ids], ...), **fields)
+    return create_model('CitedQuiz_' + format_, __base__=base, questions=(list[question], ...))
+
+
+def bind_quiz_evidence(raw, sources):
+    if not isinstance(raw, dict) or not isinstance(raw.get('questions'), list):
+        return raw
+    evidence = {e['id']: e for e in quiz_evidence(sources)}
+    questions = []
+    for question in raw['questions']:
+        if isinstance(question, dict) and 'evidenceId' in question:
+            question = dict(question)
+            selected = evidence.get(question.pop('evidenceId'))
+            if not selected or 'sourceId' in question or 'quote' in question:
+                raise ValueError('The selected evidence does not belong to the supplied lecture sections')
+            question.update(sourceId=selected['sourceId'], quote=selected['text'])
+        questions.append(question)
+    return {**raw, 'questions': questions}
+
+
 OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
        ast.Div: operator.truediv, ast.Pow: operator.pow}
 
@@ -198,6 +246,7 @@ def validate_cheatsheet(raw, sources, count):
 def validate_quiz(raw, sources, format_, count):
     if format_ == 'cheatsheet':
         return validate_cheatsheet(raw, sources, count)
+    raw = bind_quiz_evidence(raw, sources)
     if isinstance(raw, dict) and isinstance(raw.get('questions'), list):
         raw = {**raw, 'questions': [{**q, 'id': 'q' + str(i)} if isinstance(q, dict) else q
                                   for i, q in enumerate(raw['questions'])]}

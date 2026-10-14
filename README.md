@@ -39,15 +39,15 @@ If there is no collection, the first upload creates one automatically. Loaded ma
 
 The chosen format and count are authoritative. If instructions mention a different format, the creator shows a Switch control. Opening a saved quiz does not change the settings of your next request. The app assigns stable question IDs and constrains provider output to the selected question type; source and arithmetic validation remain enabled.
 
-**Library** has a collection selector, Sets and Materials tabs, search, and a set-type filter. Saved cards show question or section counts. Materials can be searched by filename, previewed, or removed. Study view supports keyboard flashcard reveal, answer feedback, review, source viewing, and export. Long processing jobs show progress and cancellation controls.
+**Create new** is the home page. **Study folders** group lectures by course, with file/note counts, a New folder action, and a trash button beside each folder. Deletion previews its materials and saved sets, and removes uploads, extracted sources, vectors, and saved work after confirmation. Active processing blocks deletion; changed contents require a fresh preview. Saved work remains under Sets and Materials, with search and type filtering. All visible selection controls use styled menus with keyboard navigation, typeahead, selected checkmarks, and consistent disabled states. Saved cards show question or section counts. Materials can be searched by filename, previewed, or removed. Study view supports keyboard flashcard reveal, answer feedback, review, source viewing, and export. Long processing jobs show progress and cancellation controls.
 
 Icons and illustrations, including the Cheat Sheet notepad, are bundled locally from Lucide and Microsoft Fluent Emoji, with source URLs and licenses in [source/ASSET_CREDITS.md](source/ASSET_CREDITS.md). The interface does not depend on a remote icon CDN.
 
-At mobile widths, existing collections can be selected and the study creator works without horizontal overflow. Named collection creation uses the desktop sidebar; first uploads can also create a collection automatically.
+At mobile widths, existing collections can be selected and the study creator works without horizontal overflow. New folder and folder deletion are available on desktop and mobile; first uploads can also create a collection automatically.
 
 ## Functionality
 
-- Create and rename study collections for courses or topics. Add PDFs, images, audio, video, text files, or pasted notes over multiple sessions.
+- Create, rename, and delete study folders for courses or topics. Add PDFs, images, audio, video, text files, or pasted notes over multiple sessions.
 - Generate across ready materials in the selected collection using semantic retrieval. Pending or failed additions do not replace earlier material.
 - Build on a saved quiz with an editable request, inherited settings, and previous-question context. Exact repeated parent question prompts are rejected; differently worded repetitions may still occur.
 - Background processing with progress, cancellation, and retry; processed material is reusable.
@@ -109,7 +109,7 @@ Python tests use a fixture AI provider. They exercise actual PDF/image validatio
 
 ## Retrieval and storage
 
-SQLite remains authoritative. Extracted source text is split into approximately 800-token chunks with 100-token overlap, preserving exact character offsets and source identity. OpenAI text-embedding-3-small creates vectors (1,536 dimensions by default), stored locally in `data/chroma/`. A query retrieves up to 24 chunks from the selected collection; the model selects up to 12 for quiz generation. Quotes are checked against those chunks, and citations resolve to original PDF pages or recording locations. Numerical validation remains enabled.
+SQLite remains authoritative. Extracted source text is split into approximately 800-token chunks with 100-token overlap, preserving exact character offsets and source identity. OpenAI text-embedding-3-small creates vectors (1,536 dimensions by default), stored locally in `data/chroma/`. A query retrieves up to 24 chunks from the selected collection; the model selects up to 12 for quiz generation. Source selection is restricted to retrieved chunk IDs. Quiz generation chooses application-assigned evidence IDs; the server attaches their exact quotes and original PDF pages or recording locations. Cheat sheets use constrained excerpt IDs, and all citations are checked against selected lecture chunks. Numerical validation remains enabled.
 
 Requests, resolved settings, parent quiz IDs, retrieval snapshots, and actual source dependencies are saved in SQLite. Earlier quiz questions are follow-up context, not source evidence. The model is not trained or fine-tuned on the growing library. Source-backed retrieval does not establish factual correctness.
 

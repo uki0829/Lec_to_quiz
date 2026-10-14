@@ -1,6 +1,7 @@
 """Local-only Lecture Lab server. Run with .venv/bin/python app.py."""
 import contextlib
 import json
+import hashlib
 import mimetypes
 import os
 import shutil
@@ -152,11 +153,72 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
 
     @app.patch('/api/collections/{cid}')
     def rename_collection(cid: str, body: CollectionName):
-        require_collection(cid)
-        if not body.name.strip():
-            raise HTTPException(400, 'Enter a collection name.')
-        store.execute('UPDATE collections SET name=? WHERE id=?', (body.name.strip(), cid))
-        return require_collection(cid)
+        with mutation_lock:
+            require_collection(cid)
+            if not body.name.strip():
+                raise HTTPException(400, 'Enter a collection name.')
+            store.execute('UPDATE collections SET name=? WHERE id=?', (body.name.strip(), cid))
+            return require_collection(cid)
+
+    def folder_impact(cid):
+        folder = require_collection(cid)
+        members = store.collection_materials(cid)
+        quizzes = store.all(
+            'SELECT DISTINCT q.id,q.body FROM quizzes q WHERE q.id IN '
+            '(SELECT quiz_id FROM quiz_collections WHERE collection_id=? UNION '
+            'SELECT qs.quiz_id FROM quiz_sources qs JOIN sources s ON s.id=qs.source_id '
+            'JOIN material_collections mc ON mc.material_id=s.material_id WHERE mc.collection_id=?) '
+            'ORDER BY q.id', (cid, cid))
+        jobs = store.all(
+            "SELECT DISTINCT j.id,j.status FROM jobs j WHERE json_extract(j.params,'$.collectionId')=? "
+            'OR j.material_id IN (SELECT material_id FROM material_collections WHERE collection_id=?) '
+            "OR EXISTS (SELECT 1 FROM json_each(j.params,'$.materialSnapshot') snap "
+            'JOIN material_collections mc ON mc.material_id=snap.value WHERE mc.collection_id=?) '
+            'ORDER BY j.id', (cid, cid, cid))
+        materials = [{'id': m['id'], 'title': m['title']} for m in members]
+        sets = [{'id': q['id'], 'title': json.loads(q['body'])['title']} for q in quizzes]
+        # Refuse a stale confirmation if new uploads/sets have appeared or the name changed.
+        revision = hashlib.sha256(json.dumps([folder['name'], sorted(m['id'] for m in members),
+                                              sets, [j['id'] for j in jobs]], sort_keys=True).encode()).hexdigest()
+        return {'id': cid, 'name': folder['name'], 'materials': materials, 'quizzes': sets,
+                'jobIds': [j['id'] for j in jobs], 'revision': revision,
+                'blocked': any(j['status'] in ('queued', 'running') for j in jobs)}
+
+    @app.get('/api/collections/{cid}/deletion-impact')
+    def collection_deletion_impact(cid: str):
+        with mutation_lock:
+            return folder_impact(cid)
+
+    @app.delete('/api/collections/{cid}')
+    def delete_collection(cid: str, expectedRevision: str | None = None):
+        with mutation_lock:
+            impact = folder_impact(cid)
+            if impact['blocked']:
+                raise HTTPException(409, 'Stop active processing before deleting this folder.')
+            if expectedRevision is not None and expectedRevision != impact['revision']:
+                raise HTTPException(409, 'Folder contents changed. Close and reopen the deletion preview.')
+            mids = [m['id'] for m in impact['materials']]
+            qids = [q['id'] for q in impact['quizzes']]
+            with store.connect() as db:
+                for qid in qids:
+                    for table in ('quiz_sources', 'quiz_collections', 'quizzes'):
+                        db.execute(f"DELETE FROM {table} WHERE {'id' if table == 'quizzes' else 'quiz_id'}=?", (qid,))
+                    db.execute('DELETE FROM requests WHERE quiz_id=?', (qid,))
+                for mid in mids:
+                    db.execute('INSERT OR IGNORE INTO vector_cleanup SELECT id FROM chunks WHERE material_id=?', (mid,))
+                    for table in ('chunks', 'sources', 'material_collections'):
+                        db.execute(f'DELETE FROM {table} WHERE material_id=?', (mid,))
+                    db.execute('DELETE FROM materials WHERE id=?', (mid,))
+                for jid in impact['jobIds']:
+                    db.execute('DELETE FROM requests WHERE job_id=?', (jid,))
+                    db.execute('DELETE FROM jobs WHERE id=?', (jid,))
+                db.execute('DELETE FROM requests WHERE collection_id=?', (cid,))
+                db.execute('DELETE FROM collections WHERE id=?', (cid,))
+            for mid in mids:
+                shutil.rmtree(store.root / 'materials' / mid, ignore_errors=True)
+            engine.retriever.cleanup()
+            return {'deleted': True, 'deletedMaterialIds': mids, 'deletedQuizIds': qids,
+                    'deletedJobIds': impact['jobIds']}
 
     @app.post("/api/materials", status_code=202)
     async def upload(files: list[UploadFile] = File(default=[]), notes: str = Form(default=""), collectionId: str | None = Form(default=None)):
@@ -209,8 +271,12 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
                     if length > 1800.1:
                         raise HTTPException(400, "Recordings must be no longer than 30 minutes.")
                 saved.append({"id": file_id, "name": name, "stored": stored, "kind": kind, "size": size})
-            store.add_material(material_id, saved, notes, collectionId)
-            return dispatch("material", material_id)
+            with mutation_lock:
+                # An upload may have streamed while its folder was deleted.
+                if collectionId:
+                    require_collection(collectionId)
+                store.add_material(material_id, saved, notes, collectionId)
+                return dispatch("material", material_id)
         except HTTPException:
             shutil.rmtree(folder, ignore_errors=True)
             raise
@@ -242,6 +308,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
         if not row or row['status'] != 'ready':
             raise HTTPException(400, 'Complete extraction before indexing this material.')
         with mutation_lock:
+            if not store.material(material_id):
+                raise HTTPException(404, 'Material not found.')
             return dispatch('index', material_id)
 
     def affected_quizzes(material_id):
@@ -308,6 +376,9 @@ def create_app(data_dir=None, ai=None, run_jobs=True):
         if row["status"] not in ("failed", "interrupted", "cancelled"):
             raise HTTPException(409, "Only stopped or failed jobs can be retried.")
         with mutation_lock:
+            row = store.job(job_id)
+            if not row or not store.material(row['material_id']):
+                raise HTTPException(404, 'The job or its material was deleted.')
             if row['kind'] == 'quiz':
                 mids = row['params'].get('materialSnapshot', [])
                 if not mids or not all(store.material(mid) for mid in mids):

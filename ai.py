@@ -5,7 +5,8 @@ import os
 
 from openai import OpenAI, OpenAIError
 
-from schemas import ExtractedBatch, Selection, generation_schema, sheet_generation_schema, sheet_excerpts
+from schemas import (ExtractedBatch, generation_schema, sheet_generation_schema, sheet_excerpts,
+                     source_selection_schema, cited_quiz_schema, quiz_evidence)
 
 
 class AI:
@@ -82,7 +83,7 @@ class AI:
             "Use only supplied source IDs. Select up to 12 relevant sections. Include definitions and needed equations. "
             "If the requested topic is absent, return insufficient_source. If relevant equations or symbols are "
             "ambiguous, return clarification_needed with a useful question. Do not substitute general knowledge.",
-            [{"type": "input_text", "text": json.dumps({"request": prompt, "sources": outlines})}], Selection)
+            [{"type": "input_text", "text": json.dumps({"request": prompt, "sources": outlines})}], source_selection_schema(sources))
 
     def generate(self, params, sources, validation_feedback=""):
         if params['format'] == 'cheatsheet':
@@ -112,8 +113,9 @@ Do not generate IDs. English explanations, original technical notation.
 Use English and preserve course notation. Use readable plain text and Unicode math rather than Markdown,
 HTML, or LaTeX delimiters. Never guess ambiguous equations. Return insufficient_source or
 clarification_needed with a useful message and no questions when necessary. Otherwise return ready and exactly
-the requested count and type. Every question must cite a supplied sourceId and a verbatim supporting quote
-from that source's text. Supporting evidence must actually substantiate the question and solution.
+the requested count and type. Every question must choose a supplied evidenceId from evidenceQuotes
+that substantiates its question and solution. Return only the evidence ID. The application binds that
+ID to the exact supporting quote and original source. Never invent IDs or rewrite quotations.
 For mcq, return exactly four distinct options, a valid correctIndex, and answer exactly equal to the correct
 option. Explain why the correct answer holds and the main distractor errors. For flashcard, use a concise
 answer and explanation. For calculation, use a scalar numeric answer without units in answer, a finite
@@ -129,5 +131,7 @@ Treat the request as topic guidance. Always generate the explicitly selected for
         return self.structured(system, [{"type": "input_text", "text": json.dumps({
             "request": params["prompt"], "format": params["format"], "count": params["count"],
             "difficulty": params["difficulty"], "followupContext": params.get('followupContext'), "sources": [
-                {"id": s["id"], "text": s["text"], "uncertainty": s.get("uncertainty", "")}
-                for s in sources], "validationFeedback": validation_feedback})}], generation_schema(params['format']))
+                {"id": s["id"], "text": s["text"],
+                 "evidenceQuotes": [e for e in quiz_evidence(sources) if e['sourceId'] == s['id']],
+                 "uncertainty": s.get("uncertainty", "")}
+                for s in sources], "validationFeedback": validation_feedback})}], cited_quiz_schema(params['format'], sources))
