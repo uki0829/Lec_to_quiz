@@ -60,7 +60,11 @@ class FakeAI:
         if params["format"] == "mcq":
             q.update(options=["2.4", "3.6", "0.6", "2.9"], correctIndex=0)
         elif params["format"] == "calculation":
-            q.update(numericAnswer=2.4, tolerance=0.001, arithmetic="3 - 0.1 * 6")
+            q.update(prompt=(r"\[w^{\mathrm{new}} = w - \eta g\]"
+                             "\n" + r"\[w=3,\quad \eta=0.1,\quad g=6\]"
+                             "\nCalculate the updated parameter."),
+                     numericAnswer=2.4, tolerance=0.001, arithmetic="3 - 0.1 * 6",
+                     problemEquation=r'w^{\mathrm{new}} = w - \eta g')
         questions = [{**copy.deepcopy(q), "id": "q" + str(i)} for i in range(params["count"])]
         return {"status": "ready", "message": "", "title": "Gradient descent", "description": "Fixture quiz", "questions": questions}
 

@@ -52,6 +52,14 @@ class CollectionName(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
+class QuizName(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+
+
+class QuizSelection(BaseModel):
+    quizIds: list[str] = Field(min_length=1, max_length=100)
+
+
 def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
     store = Store(data_dir or (ROOT / os.getenv("LECTURE_LAB_DATA_DIR", "data")))
     engine = Engine(store, ai or AI())
@@ -238,7 +246,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             qids = [q['id'] for q in impact['quizzes']]
             with store.connect() as db:
                 for qid in qids:
-                    for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quizzes'):
+                    for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quiz_removals', 'quizzes'):
                         db.execute(f"DELETE FROM {table} WHERE {'id' if table == 'quizzes' else 'quiz_id'}=?", (qid,))
                     db.execute('DELETE FROM requests WHERE quiz_id=?', (qid,))
                 for mid in mids:
@@ -372,7 +380,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             affected = affected_quizzes(material_id)
             with store.connect() as db:
                 for q in affected:
-                    for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quizzes'):
+                    for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quiz_removals', 'quizzes'):
                         db.execute(f"DELETE FROM {table} WHERE {'id' if table=='quizzes' else 'quiz_id'}=?", (q['id'],))
                     db.execute('DELETE FROM requests WHERE quiz_id=?', (q['id'],))
                 db.execute('INSERT OR IGNORE INTO vector_cleanup SELECT id FROM chunks WHERE material_id=?', (material_id,))
@@ -465,7 +473,9 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
     @app.get("/api/quizzes")
     def quizzes(collectionId: str | None = None):
         values = (collectionId,) if collectionId else ()
-        where = ' WHERE qc.collection_id=?' if collectionId else ''
+        where = ' WHERE NOT EXISTS (SELECT 1 FROM quiz_removals r WHERE r.quiz_id=q.id)'
+        if collectionId:
+            where += ' AND qc.collection_id=?'
         if auth_required:
             where += (' AND ' if where else ' WHERE ') + 'qc.collection_id IN (SELECT collection_id FROM collection_owners WHERE user_id=?)'
             values += (CURRENT_USER.get()['id'],)
@@ -475,7 +485,9 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                  'title': json.loads(r['body'])['title'], 'format': json.loads(r['body'])['format'],
                  'questionCount': len(json.loads(r['body'])['questions']),
                  'sectionCount': len(json.loads(r['body']).get('sections', [])),
-                 'answeredCount': sum(bool(a.get('submitted')) for a in json.loads(r['progress']).get('answers', {}).values()),
+                 'answeredCount': sum(bool(a.get('submitted') or (json.loads(r['body'])['format']=='flashcard'
+                                      and (a.get('reviewed') or a.get('revealed'))))
+                                      for a in json.loads(r['progress']).get('answers', {}).values()),
                  'sourceTitle': r['source_title'], 'created': r['created'],
                  'request': store.quiz_request(r['id'])} for r in rows]}
 
@@ -485,6 +497,41 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
         if not result:
             raise HTTPException(404, "Quiz not found.")
         return result
+
+    @app.patch('/api/quizzes/{quiz_id}')
+    def rename_quiz(quiz_id: str, body: QuizName):
+        title = body.title.strip()
+        if not title:
+            raise HTTPException(400, 'Enter a set name.')
+        with mutation_lock, store.connect() as db:
+            row = db.execute('SELECT body FROM quizzes WHERE id=? AND NOT EXISTS '
+                             '(SELECT 1 FROM quiz_removals r WHERE r.quiz_id=quizzes.id)', (quiz_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, 'Set no longer available.')
+            content = json.loads(row['body'])
+            content['title'] = title
+            db.execute('UPDATE quizzes SET body=? WHERE id=?', (json.dumps(content), quiz_id))
+        return store.quiz(quiz_id)
+
+    def permanently_remove_quizzes(cid, selection):
+        ids = list(dict.fromkeys(selection.quizIds))
+        with mutation_lock, store.connect() as db:
+            require_collection(cid)
+            # Validate the whole selection before changing anything.
+            for qid in ids:
+                if not db.execute('SELECT q.id FROM quizzes q JOIN quiz_collections qc ON qc.quiz_id=q.id '
+                                  'WHERE q.id=? AND qc.collection_id=?', (qid, cid)).fetchone():
+                    raise HTTPException(404, 'A selected set is no longer available in this folder.')
+            marks = ','.join('?' for _ in ids)
+            if db.execute("SELECT id FROM jobs WHERE status IN ('queued','running') "
+                          f"AND json_extract(params,'$.parentQuizId') IN ({marks})", ids).fetchone():
+                raise HTTPException(409, 'A selected set is being used for generation. Wait or cancel that job first.')
+            store.delete_quizzes(db, ids)
+        return {'removedQuizIds': ids}
+
+    @app.post('/api/collections/{cid}/quizzes/remove')
+    def remove_quizzes(cid: str, body: QuizSelection):
+        return permanently_remove_quizzes(cid, body)
 
     def require_flashcard(quiz_id, question_id):
         quiz = store.quiz(quiz_id)

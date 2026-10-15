@@ -22,7 +22,7 @@ function scheduleSave(review=false) {
   clearTimeout(saveTimer);saveSnapshot(review);if(!quiz?.id||!['generated','shared'].includes(quiz.mode)||quiz.format==='cheatsheet')return;
   const id=quiz.id,progress={index,answers:structuredClone(answers),review};
   const saved=savedSets.find(q=>q.id===id);
-  if(saved)saved.answeredCount=Object.values(answers).filter(a=>a.submitted).length;
+  if(saved)saved.answeredCount=Object.values(answers).filter(a=>a.submitted||(quiz.format==='flashcard'&&(a.reviewed||a.revealed))).length;
   const progressUrl=quiz.mode==='shared'?'/api/shared-sets/'+quiz.shareId+'/progress':'/api/quizzes/'+id+'/progress';
   saveTimer=setTimeout(()=>api(progressUrl,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(progress)})
     .catch(()=>message('Progress could not be saved. Your quiz remains available.',true)),250);
@@ -43,14 +43,12 @@ function setBusy(value) {
   $('#job-actions').hidden=!(value||lastFailedJob);$('#cancel-job').hidden=!activeJob;
   if(!value){$('#job-panel').hidden=!activeJob&&!lastFailedJob;if(lastFailedJob){$('#retry-job').hidden=false;$('#edit-failed').hidden=false;}}
   if(value){$('#edit-failed').hidden=true;$('#job-panel').hidden=false;$('#job-panel').classList.remove('failed');}
-  updateComposerState();renderQuestionBank();fitQuizStage();
+  updateComposerState();renderQuestionBank();fitQuizStage();if(typeof updateSetActions==='function')updateSetActions();
 }
 async function checkConnection() {
-  try {connection=await api('/api/config');$('#connection-status').textContent=connection.connected?'OpenAI connected':'Add OPENAI_API_KEY to .env, then restart.';
-
-  }catch(err){$('#connection-status').textContent=err.message;}
+  try {connection=await api('/api/config');}
+  catch{connection={connected:false};}
 }
-$('#refresh-connection').onclick=checkConnection;
 $('#notes').addEventListener('input',()=>materialDirty=true);
 for(const id of ['request','count','difficulty'])$('#'+id).addEventListener('change',()=>saveSnapshot());
 function updateFollowup() {
@@ -106,6 +104,7 @@ function renderQuizGrid(){
   const selectedType=$('#set-format-filter').value;
   const sets=savedSets.filter(q=>(!selectedType||q.format===selectedType)&&(q.title+' '+formatName(q.format)).toLowerCase().includes(search));
   $('#sets-count').textContent=savedSets.length;
+  if(typeof renderSetCards==='function'){renderSetCards(sets,search);return;}
   $('#quiz-grid').innerHTML=sets.map(q=>'<button class="quiz-card" data-quiz="'+esc(q.id)+'"><span class="card-top"><span class="card-format">'+icon(formatIcon(q.format))+esc(formatName(q.format))+'</span><span class="card-count">'+(q.format==='cheatsheet'?q.sectionCount+' sections':q.questionCount+' questions')+'</span></span><h3>'+mathHtml(q.title)+'</h3><span class="card-cta"><span>'+ (q.format==='cheatsheet'?'Open sheet':q.answeredCount?'Continue · '+q.answeredCount+'/'+q.questionCount:'Study')+'</span>'+icon('arrow-right')+'</span></button>').join('')+
     (!search?'<button class="quiz-card new-set-card" id="new-set-card">'+icon('plus')+'<strong>Create study set</strong></button>':!sets.length?'<p class="empty-results">No study sets match that search.</p>':'');
   $('#quiz-grid').querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>openQuiz(b.dataset.quiz));
@@ -319,7 +318,7 @@ function applyToast(text,error){
   for(const id of ['composer-message','upload-message']){const el=$('#'+id);el.className=text?'notice'+(error?' error':''):'';el.textContent=text;}
   if(text&&!error)toastTimer=setTimeout(()=>{for(const id of ['setup-message','composer-message','upload-message'])$('#'+id).textContent='';},7000);
 }
-function showView(view){if(view!=='study'){cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='groups'?'false':'page');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='study')fitQuizStage();}
+function showView(view){if(view!=='library'&&typeof endSetDrag==='function')endSetDrag();if(view!=='study'){cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='groups'?'false':'page');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='study')fitQuizStage();}
 function filterMaterials(){
   const search=$('#search-sets').value.trim().toLowerCase();
   const cards=Array.from($('#collection-materials').querySelectorAll('[data-material-title]'));
@@ -451,7 +450,6 @@ $('#back-library').onclick=()=>{showView('library');setLibraryTab('sets');saveSn
 for(const id of ['header-create','open-composer'])$('#'+id).onclick=()=>openComposer();
 for(const id of ['open-upload','materials-add'])$('#'+id).onclick=openUpload;
 document.querySelectorAll('[data-module]').forEach(b=>b.onclick=()=>openComposer(b.dataset.module));
-$('#sidebar-sample').onclick=()=>{if(busy)return;document.querySelector('[data-format="flashcard"]').click();sampleQuiz();};
 $('#composer-cancel').onclick=()=>$('#cancel-job').click();
 $('#composer-retry').onclick=()=>{if(composerJobId){lastFailedJob=composerJobId;$('#retry-job').click();}};
 $('#composer-notes').addEventListener('input',()=>{materialDirty=true;updateComposerState();});

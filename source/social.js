@@ -2,7 +2,7 @@
 let currentUser=null,currentGroupId=null,authMode='login',groupFormMode='create';
 function studyStateKey(){return 'lecture-lab-state:'+ (currentUser?.id||'signed-out');}
 function showSignIn(){
-  setAuthMode('login');$('#authenticated-app').classList.remove('practice-page');$('#authenticated-app').hidden=true;$('#auth-screen').hidden=false;
+  setAuthMode('login');if(typeof resetSetActions==='function')resetSetActions();$('#authenticated-app').classList.remove('practice-page');$('#authenticated-app').hidden=true;$('#auth-screen').hidden=false;
   $('#auth-password').value='';$('#auth-email').focus();
 }
 function setAuthMode(mode){

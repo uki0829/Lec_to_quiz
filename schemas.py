@@ -48,6 +48,7 @@ class GeneratedQuestion(StrictModel):
     numericAnswer: float | None
     tolerance: float | None
     arithmetic: str | None
+    problemEquation: str | None = None
 
 
 class GeneratedQuiz(StrictModel):
@@ -104,7 +105,9 @@ def generation_schema(format_):
     if format_ not in ('mcq', 'flashcard', 'calculation'):
         raise ValueError('Unsupported quiz format')
     fields = {name: (field.annotation, field) for name, field in GeneratedQuestion.model_fields.items()
-              if name not in ('id', 'type')}
+              if name not in ('id', 'type', 'problemEquation')}
+    if format_ == 'calculation':
+        fields['problemEquation'] = (str, ...)
     question = create_model('Question_' + format_, __base__=StrictModel,
                             type=(Literal[format_], ...), **fields)
     return create_model('Quiz_' + format_, __base__=GeneratedQuiz,
@@ -247,6 +250,47 @@ def validate_cheatsheet(raw, sources, count):
     return data
 
 
+def normalize_calculation_prompt(prompt):
+    """Promote existing inline equations to display math without inventing content."""
+    def promote(match):
+        tex = match[1] if match[1] is not None else match[2]
+        return '\n\\[' + tex.strip() + '\\]\n' if '=' in tex else match[0]
+    return re.sub(r'(?<!\\)\\\(([\s\S]*?)\\\)|(?<![\\$])\$(?!\$)([^$\n]+)\$(?!\$)', promote, prompt)
+
+
+def validate_calculation_prompt(prompt):
+    """Check visible problem structure, not mathematical or semantic correctness.
+
+    Kept at generation time so older saved/imported questions remain readable.
+    The worker returns these errors to the model for its existing repair attempt.
+    """
+    # Accept both supported display delimiters, including older double escaping.
+    blocks = re.findall(r'\\+\[([\s\S]*?)\\+\]|\$\$([\s\S]*?)\$\$', prompt)
+    equations = [left or right for left, right in blocks]
+    # Numerical assignments alone are givens, not the function/rule to solve.
+    has_problem = False
+    for equation in equations:
+        for relation in re.split(r'[,;]|\\(?:q?quad|[,;! ])', equation):
+            left, separator, right = relation.partition('=')
+            left, right = left.strip(), right.strip().rstrip('.')
+            if not separator or not right or right == '?':
+                continue
+            scalar_literal = re.fullmatch(r'[+−-]?\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?', right)
+            if not scalar_literal or re.search(r'[A-Za-z]\s*\(', left):
+                has_problem = True
+        # A displayed computational expression or matrix is also a real task.
+        if '=' not in equation and '?' not in equation and re.search(
+                r'\\(?:frac|sqrt|sum|prod|begin)\b|[A-Za-z][^=]*[+*/^]', equation):
+            has_problem = True
+    if not has_problem or not re.search(r'\d', prompt):
+        raise ValueError(
+            'A calculation prompt must display the actual function, equation, matrix, or update rule '
+            'and numerical givens in standalone LaTeX \\[ ... \\] blocks. A symbol or reference '
+            'to a function in the source is not enough. Create a new relevant equation and '
+            'numerical example using the lecture concept, stating all givens. The equation '
+            'and chosen values do not need to appear in the source.')
+
+
 def validate_quiz(raw, sources, format_, count):
     if format_ == 'cheatsheet':
         return validate_cheatsheet(raw, sources, count)
@@ -262,7 +306,7 @@ def validate_quiz(raw, sources, format_, count):
         raise ValueError(f"The model returned {len(questions)} questions instead of {count}")
     if not data["title"].strip() or len(data["title"]) > 180:
         raise ValueError("The generated quiz needs a short title")
-    for q in questions:
+    for question_index, q in enumerate(questions):
         if q['type'] != format_:
             raise ValueError(f"The model returned {q['type']} questions; the selected format is {format_}")
         if not all(q[k].strip() for k in ("prompt", "answer", "explanation", "quote")):
@@ -276,17 +320,34 @@ def validate_quiz(raw, sources, format_, count):
             if normalize(q["answer"]) != normalize(q["options"][q["correctIndex"]]):
                 raise ValueError("A multiple-choice answer disagrees with its correct option")
         elif format_ == "calculation":
+            q['prompt'] = normalize_calculation_prompt(q['prompt'])
+            equation = q.get('problemEquation')
+            if equation and equation.strip():
+                equation = equation.strip()
+                # The provider supplies TeX only; tolerate existing delimiters.
+                for opening, closing in ((r'\[', r'\]'), ('$$', '$$'), (r'\(', r'\)')):
+                    if equation.startswith(opening) and equation.endswith(closing):
+                        equation = equation[len(opening):-len(closing)].strip()
+                        break
+                q['problemEquation'] = equation
+                if re.sub(r'\s+', '', equation) not in re.sub(r'\s+', '', q['prompt']):
+                    q['prompt'] = r'\[' + equation + '\\]\n' + q['prompt']
+            validate_calculation_prompt(q['prompt'])
+            q['practiceExample'] = True
             if q["numericAnswer"] is None or q["tolerance"] is None or not 0 <= q["tolerance"] <= 1:
                 raise ValueError("A calculation needs a numeric answer and tolerance")
             if not q["steps"]:
                 raise ValueError("A calculation needs worked steps")
             expected = arithmetic_value(q["arithmetic"])
             if not math.isclose(expected, q["numericAnswer"], rel_tol=1e-9, abs_tol=1e-9):
-                raise ValueError("A calculation answer disagrees with its arithmetic")
+                raise ValueError(f"Question {question_index + 1}: numericAnswer disagrees with its arithmetic; "
+                                 "recompute the solution from the givens and make every answer field agree")
             try:
                 displayed = float(q["answer"].replace("−", "-"))
             except ValueError as exc:
                 raise ValueError("Calculation answer must be a scalar number without units") from exc
             if not math.isclose(displayed, expected, rel_tol=1e-9, abs_tol=1e-9):
-                raise ValueError("The displayed calculation answer is inconsistent")
+                raise ValueError(f"Question {question_index + 1}: displayed answer {q['answer']} disagrees "
+                                 f"with numericAnswer {q['numericAnswer']} and arithmetic. Recompute from "
+                                 "the givens and make the displayed answer and worked steps agree.")
     return data

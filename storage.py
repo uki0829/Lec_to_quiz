@@ -25,6 +25,9 @@ class Store:
                 if not migrated:
                     with sqlite3.connect(self.root / 'lecture_lab.pre_collections.sqlite3') as backup:
                         old.backup(backup)
+                if old.execute("SELECT name FROM sqlite_master WHERE name='quizzes'").fetchone() and not old.execute("SELECT name FROM sqlite_master WHERE name='quiz_removals'").fetchone():
+                    with sqlite3.connect(self.root / 'lecture_lab.pre_set_actions.sqlite3') as backup:
+                        old.backup(backup)
         with self.connect() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -43,6 +46,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS quizzes (
                     id TEXT PRIMARY KEY, material_id TEXT NOT NULL, body TEXT NOT NULL,
                     progress TEXT NOT NULL DEFAULT '{}', created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS quiz_removals (
+                    quiz_id TEXT PRIMARY KEY, removed REAL NOT NULL);
             """)
         self.migrate_collections()
         self.migrate_identity()
@@ -162,6 +167,36 @@ class Store:
         with self.connect() as db:
             return [dict(r) for r in db.execute(query, values).fetchall()]
 
+    def delete_quizzes(self, db, quiz_ids):
+        """Permanently remove sets inside the caller's validated transaction."""
+        marks = ','.join('?' for _ in quiz_ids)
+
+        def detach_parent(value):
+            value = dict(value)
+            value.pop('parentQuizId', None)
+            value.pop('followupContext', None)
+            if 'retrievalQuery' in value:
+                value['retrievalQuery'] = value.get('prompt', '')
+            if isinstance(value.get('submitted'), dict):
+                value['submitted'] = detach_parent(value['submitted'])
+            return value
+
+        # Existing follow-up sets remain usable independently of their parent.
+        for row in db.execute(f'SELECT * FROM requests WHERE parent_quiz_id IN ({marks})', quiz_ids).fetchall():
+            db.execute('UPDATE requests SET parent_quiz_id=NULL,submitted=?,resolved=? WHERE id=?',
+                       (json.dumps(detach_parent(json.loads(row['submitted']))),
+                        json.dumps(detach_parent(json.loads(row['resolved']))), row['id']))
+        for row in db.execute(f"SELECT id,params FROM jobs WHERE json_extract(params,'$.parentQuizId') IN ({marks})", quiz_ids).fetchall():
+            db.execute('UPDATE jobs SET params=? WHERE id=?',
+                       (json.dumps(detach_parent(json.loads(row['params']))), row['id']))
+        db.execute(f"DELETE FROM jobs WHERE kind='quiz' AND (json_extract(result,'$.quizId') IN ({marks}) "
+                   f'OR id IN (SELECT job_id FROM requests WHERE quiz_id IN ({marks})))', quiz_ids + quiz_ids)
+        db.execute(f'DELETE FROM requests WHERE quiz_id IN ({marks})', quiz_ids)
+        for table in ('starred_questions', 'question_hints', 'quiz_sources', 'quiz_collections', 'quiz_removals'):
+            db.execute(f'DELETE FROM {table} WHERE quiz_id IN ({marks})', quiz_ids)
+        db.execute(f'UPDATE group_sets SET original_quiz_id=NULL WHERE original_quiz_id IN ({marks})', quiz_ids)
+        db.execute(f'DELETE FROM quizzes WHERE id IN ({marks})', quiz_ids)
+
     def material(self, material_id):
         row = self.one("SELECT * FROM materials WHERE id=?", (material_id,))
         if row:
@@ -221,7 +256,8 @@ class Store:
         return quiz
 
     def quiz(self, quiz_id):
-        row = self.one("SELECT * FROM quizzes WHERE id=?", (quiz_id,))
+        row = self.one("SELECT * FROM quizzes WHERE id=? AND NOT EXISTS "
+                       "(SELECT 1 FROM quiz_removals r WHERE r.quiz_id=quizzes.id)", (quiz_id,))
         if not row:
             return None
         body = json.loads(row['body'])

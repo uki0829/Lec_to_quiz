@@ -23,6 +23,36 @@ def test_incomplete_output_is_not_success(monkeypatch):
     with pytest.raises(ValueError, match="complete structured"):
         ai.structured("system", [], Selection)
 
+
+def test_calculation_generation_uses_more_reasoning(monkeypatch):
+    from schemas import generation_schema
+    captured = {}
+    def parse(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(status='completed', output_parsed=Selection(
+            status='insufficient_source', message='Fixture', sourceIds=[]))
+    ai = AI()
+    monkeypatch.setattr(ai, 'client', lambda: SimpleNamespace(responses=SimpleNamespace(parse=parse)))
+    ai.structured('system', [], generation_schema('calculation'))
+    assert captured['reasoning']['effort'] == 'medium'
+    ai.structured('system', [], generation_schema('mcq'))
+    assert captured['reasoning']['effort'] == 'low'
+
+
+@pytest.mark.parametrize('format_', ['mcq', 'flashcard', 'calculation', 'cheatsheet'])
+def test_generation_guidance_covers_multiple_academic_subjects(format_, monkeypatch):
+    captured = {}
+    ai = AI()
+    def structured(system, content, schema):
+        captured['system'] = system
+        return {}
+    monkeypatch.setattr(ai, 'structured', structured)
+    ai.generate({'format': format_, 'prompt': 'Main lecture topics', 'count': 4,
+                 'difficulty': 'beginner'}, [])
+    for subject in ('computer science', 'psychology', 'physics'):
+        assert subject in captured['system']
+    assert 'without\nforcing equations into conceptual questions' in captured['system']
+
 @pytest.mark.parametrize('format_', ['mcq','flashcard','calculation'])
 def test_generation_schema_locks_selected_format(format_, monkeypatch):
     from schemas import generation_schema

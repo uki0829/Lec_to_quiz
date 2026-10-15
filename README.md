@@ -2,6 +2,16 @@
 
 A local AI Lecture-to-Quiz application. Add lecture material, ask for a topic, and practice using multiple choice, flashcards, or scalar calculations, and generate source-linked cheat sheets. The dark study dashboard is served by Python FastAPI, with SQLite for collections, materials, requests, jobs, quizzes, and progress, plus a persistent local Chroma index for lecture retrieval. Accounts keep private study spaces separate, and study groups share selected practice sets.
 
+New calculation questions include a displayed LaTeX function, equation, matrix, or update rule plus numerical givens. The model may construct new equations, functions, matrices, coefficients, and example values applying concepts taught in the uploaded material; the exact exercise need not appear in the lecture. The explanation identifies constructed practice, and its citation is labelled **Concept source**. Original quoted lecture excerpts remain unchanged. Missing worked examples alone do not trigger clarification. Generation validation rejects word-only questions, isolated symbols, and givens without a rule, then requests one repair. Existing inline LaTeX equations are promoted to display math without changing their content; numerical givens can also appear in the surrounding prompt. These checks verify problem structure and answer arithmetic; they do not prove mathematical correctness or completeness. Existing saved questions keep their original wording and progress; retry a failed generation or create another set to apply this policy.
+
+Flashcards use flip, hint, star, Explanation, and Back/Continue; revealing a card records it as reviewed without self-rating buttons. In the library, drag a saved set onto the bottom **Delete permanently** target to delete it with no Undo. Its questions, progress, stars, cached hints, and generation request are removed from the app database. Touch supports a short hold then drag, and keyboard users can press Delete on a focused set, then activate the trash target or press Escape to cancel before dropping. Uploaded lecture materials are retained. Calculation feedback stays hidden after checking; **Explanation** beside Check opens the worked solution over the card. Clicking the panel or Explanation again collapses it without moving Previous/Next.
+
+## Academic subjects
+
+Generation infers the subject from your uploaded lecture. Computer science, psychology, physics, and other academic topics use the same upload and RAG workflow, with subject-appropriate concepts and terminology. Qualitative lectures can produce conceptual quizzes and flashcards; physics and other quantitative topics can produce new numerical exercises with equations and stated units. A short quiz samples major topics rather than guaranteeing every detail is tested.
+
+Real authored PDF checks passed for computer-science and psychology multiple choice/flashcards and physics multiple choice/flashcards/calculations. Reproduce these optional paid API checks with `.venv/bin/python scripts/live_subject_check.py`. Fixtures are authored test material, not real course documents. See VERIFICATION.md for scope and limitations.
+
 ## Start
 
 The project virtual environment is already installed on this computer. From this folder:
@@ -44,7 +54,7 @@ OPENAI_TRANSCRIPTION_MODEL=whisper-1
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-Restart after changing `.env`. The interface's AI connection section reports whether a key is configured. Do not paste keys into chat. `.env`, `.venv/`, and `data/` are ignored by Git. Keys are never sent to the browser, exports, or SQLite. If a key has been shared in chat, revoke it and configure a replacement.
+Restart after changing `.env`. Connection checks run automatically before material processing and generation. Do not paste keys into chat. `.env`, `.venv/`, and `data/` are ignored by Git. Keys are never sent to the browser, exports, or SQLite. If a key has been shared in chat, revoke it and configure a replacement.
 
 Quiz generation and visual interpretation use the Responses API with structured output and `store=False`. Whisper supplies segment timestamps. API billing and model access depend on your OpenAI account. Material is sent to OpenAI when AI processing/generation runs. `store=False` does not establish zero provider retention.
 
@@ -114,9 +124,9 @@ Cancellation stops scheduling further work; an in-flight API request may finish 
 
 Material is retained in ignored local `data/` until deletion. Deletion is permanent. Exported files and browser copies of imported quizzes are independent.
 
-## Sample mode and OA demonstration
+## OA demonstration
 
-Try the sample lecture uses an authored lecture and six authored questions in the selected format. It is visibly labeled and never analyzes user uploads or the topic request. It works without credentials.
+Sample buttons are removed from the interface. Authored lecture fixtures in `samples/` can be uploaded for a real generation demonstration. Imported or restored authored quizzes retain their sample labels.
 
 For a genuine AI demo:
 1. Create a Machine Learning collection, then upload `samples/gradient-descent.pdf`, `samples/gradient-descent.png`, or paste `samples/gradient-descent.txt`.
@@ -188,3 +198,5 @@ Opening a quiz, flashcard set, or calculation set enters a dedicated study page 
 Multiple-choice answers grade immediately. A correct response plays its existing sound and advances after 550 ms; an incorrect response opens a scrollable explanation dialog with citations and Continue. Answers can be reviewed through Explanation without regrading. The final advance opens the completion summary. Previous and Next are grouped at the bottom center. Card and navigation dimensions remain stable when answering or flipping a flashcard; longer content scrolls inside the card. Flashcard explanations use the same dialog, and flipping back hides the answer.
 
 Calculation prompts and worked steps use locally bundled KaTeX. Existing saved questions with double-escaped math delimiters render normally after refresh. New generation requests numerical givens and functions on standalone LaTeX equation lines, with the answer hidden until checking. Scalar numerical grading and source records remain unchanged.
+
+Each saved set has a Rename button. Renaming preserves its questions, request, sources, and practice progress. The top-left arrow slides the sidebar in or out and remembers the layout preference after refresh. The quiz Remove button is omitted from the current interface.

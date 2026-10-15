@@ -3,13 +3,18 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const text=readFileSync(new URL('../source/app.js',import.meta.url),'utf8');
 const elements=new Map();
-const element=()=>({value:'',dataset:{},addEventListener(){},querySelectorAll(){return []},setAttribute(){},click(){},focus(){},style:{},hidden:false,open:false,showModal(){this.open=true},close(){this.open=false}});
+const element=()=>({value:'',dataset:{},addEventListener(){},querySelectorAll(){return []},querySelector(){return null},setAttribute(){},click(){},focus(){},style:{},hidden:false,open:false,showModal(){this.open=true},close(){this.open=false}});
 const document={querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return []}};
 const timers=new Map();let timerId=0;
 const context=vm.createContext({document,window:{},structuredClone,console,scheduleSave(){},setTimeout(fn){timers.set(++timerId,fn);return timerId;},clearTimeout(id){timers.delete(id);}});
 const tick=()=>{const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());};
 vm.runInContext(text,context);
 const {gradeNumeric,validateImported,samples,inferRequestedFormat}=context.window.__lectureLab;
+const practiceSource=context.sourceHtml({...samples.calculation[0],practiceExample:true,
+  source:{...samples.calculation[0].source,id:'concept-source'}});
+assert.match(practiceSource,/Concept source:/);
+assert.match(practiceSource,/data-source="concept-source"/);
+assert.doesNotMatch(context.sourceHtml(samples.mcq[0]),/Concept source:/);
 assert.equal(gradeNumeric('2.4e0',2.4,.001),true);
 assert.equal(gradeNumeric('-0.5',-.5,.001),true);
 assert.equal(gradeNumeric('2.401',2.4,.001),true);
@@ -80,9 +85,9 @@ vm.runInContext("startQuiz({id:'flip-check',title:'Flashcards',mode:'generated',
 assert.match(document.querySelector('#question').innerHTML,/aria-label="Show answer"/);
 vm.runInContext("$('#flash-flip').onclick();",context);
 assert.match(document.querySelector('#question').innerHTML,/aria-label="Show question"/);
-vm.runInContext("$('#known').onclick();$('#flash-flip').onclick();",context);
-assert.equal(vm.runInContext('answers[quiz.questions[0].id].submitted',context),true);
-assert.equal(vm.runInContext('answers[quiz.questions[0].id].correct',context),true);
+assert.doesNotMatch(document.querySelector('#question').innerHTML,/id="known"|id="again"|I knew this|Practice again/);
+vm.runInContext("$('#flash-flip').onclick();",context);
+assert.equal(vm.runInContext('answers[quiz.questions[0].id].submitted',context),undefined);
 assert.equal(vm.runInContext('answers[quiz.questions[0].id].revealed',context),false);
 assert.doesNotMatch(document.querySelector('#question').innerHTML,/class="flash-explanation"/);
 assert.match(document.querySelector('#previous').innerHTML,/Back/);
@@ -95,7 +100,7 @@ assert.equal(vm.runInContext('answers[quiz.questions[0].id].reviewed',context),t
 vm.runInContext("quiz.questions[0].starred=true;quiz.questions[0].hint='A saved cue';showSummary();",context);
 assert.match(document.querySelector('#summary').innerHTML,/<dt>Completed<\/dt><dd>1<\/dd>/);
 assert.match(document.querySelector('#summary').innerHTML,/<dt>Remaining<\/dt><dd>5<\/dd>/);
-assert.match(document.querySelector('#summary').innerHTML,/Recalled/);
+assert.match(document.querySelector('#summary').innerHTML,/Reviewed/);
 vm.runInContext("quiz.questions.forEach(q=>answers[q.id]={reviewed:true,revealed:false});showSummary();",context);
 assert.match(document.querySelector('#summary').innerHTML,/You reviewed every card!/);
 assert.match(document.querySelector('#summary').innerHTML,/<dt>Completed<\/dt><dd>6<\/dd>/);
@@ -229,3 +234,37 @@ document.querySelector('#quiz-explanation-dialog').oncancel({preventDefault(){ca
 assert.equal(cancelledDefault,true);assert.equal(document.querySelector('#quiz-explanation-dialog').open,false);
 assert.equal(vm.runInContext('index',context),3);
 console.log('Timer race and keyboard dismissal checks passed.');
+
+// Calculation feedback stays collapsed until requested, and closes on panel click.
+vm.runInContext("startQuiz({title:'Calculation',mode:'sample',format:'calculation',questions:structuredClone(samples.calculation)});$('#number-answer').value='90';$('#check').onclick();",context);
+assert.equal(vm.runInContext('answers.c1.correct',context),false);
+let calculationHtml=document.querySelector('#question').innerHTML;
+assert.doesNotMatch(calculationHtml,/Enter a number\. Absolute tolerance|Not quite\./);
+assert.match(calculationHtml,/<button class="primary practice-button" id="check" disabled>Check<\/button>/);
+assert.match(calculationHtml,/<details id="calculation-solution" class="calculation-solution">/);
+assert.doesNotMatch(calculationHtml,/<details id="calculation-solution"[^>]* open/);
+assert.match(calculationHtml,/<summary class="practice-button explanation-button">Explanation<\/summary>/);
+assert.match(calculationHtml,/Let’s work through it/);
+vm.runInContext("$('#calculation-solution').open=true;$('#calculation-solution-panel').onclick({target:{closest(){return null}}});",context);
+assert.equal(document.querySelector('#calculation-solution').open,false);
+vm.runInContext("$('#calculation-solution').open=true;$('#calculation-solution-panel').onclick({target:{closest(){return {}}}});",context);
+assert.equal(document.querySelector('#calculation-solution').open,true);
+vm.runInContext("$('#next').onclick();",context);
+assert.doesNotMatch(document.querySelector('#question').innerHTML,/id="calculation-solution"/);
+vm.runInContext("$('#previous').onclick();",context);
+assert.match(document.querySelector('#question').innerHTML,/<details id="calculation-solution" class="calculation-solution">/);
+assert.equal(vm.runInContext('answers.c1.correct',context),false);
+console.log('Calculation feedback passed: checked answer retained, closed by default, explicit reveal, panel click hides, source controls remain usable, and navigation resets disclosure.');
+
+for(const type of ['mcq','flashcard','calculation']){
+  vm.runInContext(`startQuiz({title:'Consistent controls',mode:'sample',format:'${type}',questions:structuredClone(samples.${type})});`,context);
+  if(type==='mcq')vm.runInContext('submitChoice(null,true);closeQuizExplanation();',context);
+  if(type==='flashcard')vm.runInContext("$('#flash-flip').onclick();",context);
+  if(type==='calculation')vm.runInContext("$('#number-answer').value='90';$('#check').onclick();",context);
+  assert.match(document.querySelector('#question').innerHTML,/class="practice-button explanation-button"[^>]*>Explanation</);
+  assert.doesNotMatch(document.querySelector('#question').innerHTML,/Not quite\./);
+}
+vm.runInContext("startQuiz({title:'Calculation',mode:'sample',format:'calculation',questions:structuredClone(samples.calculation)});$('#number-answer').value='not a number';$('#check').onclick();",context);
+assert.match(document.querySelector('#answer-message').textContent,/Enter a number/);
+assert.equal(vm.runInContext('answers.c1?.submitted',context),undefined);
+console.log('Practice controls passed: shared Explanation class across all three formats, removed tolerance/result annotations, and retained invalid-input feedback.');

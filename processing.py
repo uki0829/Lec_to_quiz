@@ -287,7 +287,12 @@ class Engine:
         if not sources:
             return {'status': 'insufficient_source', 'message': 'No indexed lecture content is available. Add or index materials first.'}
         self.stage(job_id, "Selecting relevant lecture sections", 1, 4)
-        selection = self.ai.select(query, sources)
+        selection_request = query
+        if params['format'] == 'calculation':
+            selection_request += ('\nStudy format: calculation. Select lecture concepts for new numerical '
+                                  'practice exercises. The generator may choose new functions and numerical '
+                                  'givens; the lecture need not contain the exact exercise or a worked example.')
+        selection = self.ai.select(selection_request, sources)
         self.check(job_id)
         if selection["status"] != "ready":
             return {"status": selection["status"], "message": selection["message"]}
@@ -312,7 +317,10 @@ class Engine:
             except ValueError as exc:
                 if attempt:
                     raise ValueError("The generated study set failed validation: " + str(exc)) from exc
-                feedback = str(exc) + ". Repair the result while remaining grounded in the supplied sources."
+                feedback = json.dumps({'error': str(exc), 'previousAttempt': raw,
+                    'instruction': 'Repair the identified issue, preserving other valid questions. '
+                    'For calculation you may create new relevant exercise equations and numbers; '
+                    'cite the lecture concept and keep all answer fields consistent.'})
         if quiz["status"] != "ready":
             return {"status": quiz["status"], "message": quiz["message"]}
         self.check(job_id)

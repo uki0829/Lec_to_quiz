@@ -1,5 +1,51 @@
 # Verification record
 
+## Permanent deletion and academic subjects, October 14, 2026
+
+- Drag deletion now permanently removes quiz bodies/progress, source dependency links, collection links, stars, hints, generation requests, and their completed generation jobs in one transaction. Undo UI/state and the restore endpoint are removed. Lecture uploads/extracted content/vectors remain available. Existing follow-up sets remain, with deleted-parent references and saved parent-question context detached. Explicitly shared group snapshots remain independent copies.
+- Deletion tests verify actual SQLite row removal, inability to restore or access after reopening the store, atomic owner/folder validation, active-follow-up blocking, associated-data cleanup, and preserved independent follow-ups/shared snapshots. No existing user set was deleted during verification; permanent-delete checks used test databases.
+- Extraction, retrieval selection, and generation now receive subject-neutral instructions for computer science, psychology, physics, and other academic subjects. Conceptual topics do not require equations. Broad requests distribute questions across major concepts; a short set does not guarantee exhaustive coverage. Physics calculation prompts explicitly request units for givens and answers.
+- Real end-to-end authored PDF checks completed extraction, embeddings, retrieval/reranking, source selection, and generation: computer science MCQ/flashcards (8 items), psychology MCQ/flashcards (8), and physics MCQ/flashcards/calculations (12). All 28 items passed validation, source-page/preview resolution, and local math rendering. Qualitative items were reviewed for relevance. These checks establish representative subject support, not universal factual correctness.
+- A targeted live physics check after strengthening unit instructions produced four new problems specifying kg, m/s, m/s^2, N, and requested newton/joule answers. Hand-checked answers were 18, 50, 98, and 72, with valid LaTeX. Ignored artifact: data/physics-units-live-check.json.
+- Reproducible optional live check: scripts/live_subject_check.py with fixtures/subject-lectures.json. Final regression run: 115 Python tests and all JavaScript behavior/syntax checks passed.
+
+## Plain Explanation text and trash alignment, October 14, 2026
+
+- Explanation uses purple text rgb(191,194,255), transparent background, zero border, and no shadow across all quiz types. Hover stays transparent; keyboard focus uses an underline. Existing control sizing and disclosure behavior are retained.
+- The fixed trash target accounts for the desktop sidebar width, the narrower desktop breakpoint, and collapsed/mobile layouts. Browser checks in an isolated fixture confirmed matching content/trash centers at x=876 with a 240px sidebar and x=756 when collapsed, in a 1512px viewport. No sets were deleted for this check.
+- Frontend behavior and drag/Undo checks passed. Screenshots in portfolio output: lecture-lab-purple-text-explanation.png and lecture-lab-trash-content-centered.png.
+
+## Consistent practice controls, October 14, 2026
+
+- Explanation controls across multiple choice, flashcards, and calculations share one class and style. Browser computed styles matched exactly: inherited Avenir Next font, 14 px, weight 700, foreground rgb(246,248,255), navy rgb(39,49,66), and 140 by 44 px, with matching borders and interaction states. Check and navigation use the same type and sizing tokens with their existing primary/secondary roles.
+- Removed the calculation tolerance paragraph and result annotation, and removed the Not quite label from multiple choice. Tolerance grading, stored answers, invalid-number errors, and explanation toggling remain enabled.
+- Targeted frontend behavior, practice-route, and JavaScript syntax checks passed. Browser checks used an isolated fixture database; user progress was not modified. Screenshot: portfolio output/lecture-lab-consistent-buttons.png.
+
+## Card controls and calculation disclosure, October 14, 2026
+
+- Removed flashcard self-rating buttons and handlers. Reveals record review progress; library counts include reviewed cards without marking them correct or incorrect. Existing progress is preserved.
+- Saved library cards support native mouse drag to a bottom trash target, touch hold-and-drag, and Delete/Escape keyboard controls. Removal uses the existing owner/folder-scoped recoverable API, preserves lecture materials, updates parent/current-set context, and offers persisted Undo. External drops, cancelled drags, failed removal, and folder changes do not delete a set.
+- Calculation Check remains beside a closed-by-default Explanation disclosure after submission. The worked solution overlays within the question card; clicking its noninteractive content collapses it, while citation controls remain usable. Reopening/revisiting starts collapsed and retains the graded answer.
+- Browser checks used a separate fixture database at port 8766. Confirmed flashcard rating buttons absent, reviewed count persisted, wrong calculation hidden until requested, panel click collapse, and unchanged centered navigation. A real mouse drag removed a fixture quiz (3 sets to 2); Undo restored 3 sets. Keyboard pickup revealed the trash target; Escape cancelled it. User study data was not deleted during testing.
+- Automated checks: 109 Python tests and all JavaScript behavior checks passed, including native drag handlers, touch hold/drop versus scrolling, cancellation, foreign-drop rejection, deletion failure, folder isolation, and Undo. Native touch input was covered through event fixtures, not a physical touchscreen.
+- Screenshots in the portfolio output folder: lecture-lab-calculation-explanation-toggle.png and lecture-lab-drag-trash.png.
+
+## Constructed calculation practice, October 14, 2026
+
+- Replaced the requirement that example equations and numerical values appear in the lecture. Selection now retrieves supporting concepts even without worked examples; generation may construct new relevant functions, equations, matrices, assumptions, and numerical givens. Source quotations remain verbatim and are labelled Concept source for newly generated calculations.
+- The structured calculation contract requires a separate problemEquation field. The app inserts it as display LaTeX if absent from the prompt, without duplicating a whitespace-equivalent equation. Inline equations are promoted to display math; standalone computational expressions and matrices are accepted. Numerical givens can be stated elsewhere in the visible prompt.
+- Calculation generation uses medium reasoning. Arithmetic checks remain enforced. Repair feedback includes the previous attempt and identifies inconsistent answer fields, allowing the model to preserve valid questions while repairing errors.
+- Replayed the failed six-question PDF request against its retrieved lecture passages using the real model. The final implementation produced six validated questions in one attempt. Independently checked answers were 0.6, 16000, 15, 4, 60, and 6144; all prompts and worked solutions typeset in local KaTeX without errors. An earlier low-reasoning replay was rejected for an inconsistent displayed answer; no invalid quiz was saved.
+- A separate real generation check used concept-only gradient-descent notes with no equations or numerical data. Four new quadratic exercises passed validation and typesetting, with hand-checked answers 0.3, 1, 1.7, and -0.35. Ignored artifacts: data/calculation-pdf-concept-check.json and data/calculation-concept-only-concept-check.json. These targeted checks do not establish correctness on arbitrary generated problems.
+- Final regression run: 108 Python tests, all JavaScript behavior checks, syntax checks, and diff whitespace checks passed. Restarted the idle local server with the updated generation policy; the homepage returned HTTP 200. Existing user quizzes and practice progress were not rewritten.
+
+## Calculation problem statements, October 14, 2026
+
+- Added generation-only checks requiring standalone LaTeX with an actual function/equation/rule and numerical givens. Regression cases cover the missing-loss screenshot, isolated symbols, inline-only math, and givens without a rule.
+- Worker tests verify automatic repair and rejection after failed repair while preserving earlier saved quizzes.
+- A real OpenAI request on an authored four-example fixture produced gradient-update, minibatch-step, Hessian-condition-number, and quadratic-loss questions on the first attempt. Independently checked answers were 2.4, 32, 10, and 9. Every prompt contained displayed equations and givens; local KaTeX rendered all prompts and worked solutions without formatting errors. Artifact: ignored `data/calculation-equation-check.json`. This check does not establish accuracy across arbitrary lectures.
+- Full automated run: 99 Python tests passed, with all JavaScript behavior checks passing. Original saved question wording and progress are preserved.
+
 Verified October 13, 2026, during local implementation.
 
 ## Automated
@@ -298,3 +344,17 @@ All 24 question/answer/explanation/step fields from the user's four-question cal
 Generation instructions now request standalone mathematical givens/functions and correct backslash handling after JSON decoding. A direct live OpenAI check using an authored gradient-descent/minibatch fixture produced four validated calculation questions, all with standalone equations. All 17 prompt/explanation/step fields typeset without errors. This check did not run a new PDF extraction or RAG journey, and the fixture quiz was not inserted into the user's library. Artifacts: data/calculation-render-check.json and data/calculation-latex-generation-check.json.
 
 Math regression checks passed for double-escaped inline/display delimiters, original numbers, fractions, matrices and optional row spacing, malformed formulas, literal-mode preservation, and unsafe link rejection. Existing frontend interaction checks, JS syntax checks, and all 10 AI contract tests passed.
+
+## Remove sample entry points and connection panel — 2026-10-14
+
+Removed the sidebar sample button, library sample shelf, empty-study sample button, and bottom AI connection section from the HTML. Removed their event bindings. Connection checks still run automatically during startup and before processing/generation, without referencing the deleted controls. File-size errors no longer direct users to that removed panel.
+
+Existing frontend interaction, creator/recovery, and JS syntax checks passed. Browser startup displayed the saved library and study folders with no sample entry points or AI connection section. Screenshot: output/lecture-lab-clean-library.png in the portfolio workspace.
+
+## Saved-set names and sliding sidebar — 2026-10-14
+
+Added saved-set renaming with owner-authorized PATCH, trimmed title validation, and unchanged questions, request records, source dependencies, and progress. The initially requested bulk-removal implementation uses an additive quiz_removals table and a pre_set_actions SQLite backup, preserving source data and allowing restoration. All 84 backend tests passed, including six new cases covering title changes, removal/restore persistence, ownership/folder boundaries, atomic selections, active-parent-job blocking, and source-deletion cleanup.
+
+Following the user's subsequent instruction, removed the quiz Remove button and selection controls from the interface, retaining Rename and recovery for any previously removed sets. Updated frontend checks pass for naming, blank/failed rename recovery, unchanged active practice/follow-up context, absent Remove controls, and prior-removal Undo isolation. Existing frontend, creator, social, and JS syntax checks passed.
+
+Added an accessible top-left sidebar toggle using the existing Lucide chevron asset. The navigation slides away, becomes inert/aria-hidden, and the content column expands; reduced-motion settings disable transitions. A browser-local appearance preference survives refresh. Browser checks confirmed desktop content expands from 1272px to 1512px when the 240px sidebar closes. At 390×844, both sidebar states fit the viewport with page width 390, and no quiz Remove controls were present. The Rename dialog was inspected and cancelled; no real quizzes were renamed or removed. Temporary viewport override was reset. Screenshot: output/lecture-lab-sidebar-toggle.png in the portfolio workspace.
