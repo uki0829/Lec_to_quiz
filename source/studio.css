@@ -403,26 +403,67 @@
 @keyframes trash-arrive{from{opacity:0;translate:0 12px}to{opacity:1;translate:0 0}}
 @media(prefers-reduced-motion:reduce){.set-trash{animation:none}.managed-set[draggable=true]{transition:none}}
 
-/* Slide study navigation away while the main column takes its space. */
-#authenticated-app{--library-sidebar-space:240px}
-#authenticated-app.sidebar-collapsed{--library-sidebar-space:0px}
-@media(min-width:851px) and (max-width:1200px){#authenticated-app{--library-sidebar-space:205px}}
-@media(max-width:850px){#authenticated-app{--library-sidebar-space:0px}}
-.sidebar-toggle{width:38px;height:40px;padding:8px;flex:none}
-.sidebar-toggle .icon{transform:rotate(180deg);transition:transform .24s ease}
-#authenticated-app.sidebar-collapsed .sidebar-toggle .icon{transform:rotate(0)}
-#authenticated-app:not(.practice-page) .app-shell{transition:grid-template-columns .24s ease;grid-template-columns:240px minmax(0,1fr)}
-#authenticated-app:not(.practice-page) .sidebar{min-width:0;overflow:hidden;transition:transform .24s ease,opacity .2s ease,padding .24s ease,visibility 0s;transform:translateX(0);opacity:1;visibility:visible}
-#authenticated-app.sidebar-collapsed:not(.practice-page) .app-shell{grid-template-columns:0 minmax(0,1fr)}
-#authenticated-app.sidebar-collapsed .sidebar{transform:translateX(-100%);opacity:0;visibility:hidden;padding-left:0;padding-right:0;border-right:0;pointer-events:none;transition:transform .24s ease,opacity .2s ease,padding .24s ease,visibility 0s .24s}
-@media(max-width:1200px) and (min-width:851px){#authenticated-app:not(.practice-page) .app-shell{grid-template-columns:205px minmax(0,1fr)}#authenticated-app.sidebar-collapsed:not(.practice-page) .app-shell{grid-template-columns:0 minmax(0,1fr)}}
+/* Navigation contracts to an accessible icon rail, with branding inside its column. */
+#authenticated-app{--sidebar-expanded:240px;--sidebar-rail:76px;--sidebar-width:var(--sidebar-expanded);--library-sidebar-space:var(--sidebar-width)}
+#authenticated-app.sidebar-collapsed{--sidebar-width:var(--sidebar-rail)}
+.app-header{padding:0;gap:0}
+.sidebar-branding{width:var(--sidebar-width);height:100%;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;border-right:1px solid var(--line);overflow:hidden;transition:width .24s ease}
+.sidebar-branding .brand{min-width:0;gap:9px;font-size:19px;letter-spacing:-.5px}
+.sidebar-branding .brandmark{width:32px;height:32px;flex:none}
+.sidebar-branding .brandmark .icon{width:23px;height:23px}
+.sidebar-branding .brand-name{white-space:nowrap}
+.sidebar-toggle{width:36px;height:40px;padding:7px;flex:none}
+.sidebar-toggle .icon{width:22px;height:22px;transform:none}
+.app-header .header-actions{padding:0 24px;min-width:0}
+#authenticated-app:not(.practice-page) .app-shell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);transition:grid-template-columns .24s ease}
+#authenticated-app:not(.practice-page) .sidebar{display:flex;flex-direction:column;gap:12px;padding:24px 14px;min-width:0;overflow:hidden;transform:none;opacity:1;visibility:visible;pointer-events:auto;border-right:1px solid var(--line);transition:padding .24s ease}
+.sidebar .social-nav{display:grid;gap:6px;flex:none;margin:0 0 12px}
+.sidebar .social-nav button{min-height:46px;padding:12px;justify-content:flex-start;font-size:14px;white-space:nowrap}
+.sidebar .social-nav .icon{width:22px;height:22px;flex:none}
+.sidebar .collection-nav{display:grid;grid-column:auto;gap:6px;max-height:calc(100dvh - 410px);min-height:0;overflow-y:auto;overflow-x:hidden;flex:none}
+.sidebar .collection-button{min-width:0;max-width:none;width:100%;padding:12px 10px}
+.sidebar .sidebar-heading{display:flex;margin:0}.sidebar .folder-help{display:block}
+.sidebar .new-folder-button{width:100%;margin:0;min-height:42px;flex:none}
+.sidebar-folder-intro{display:grid;grid-template-rows:1fr;flex:none;opacity:1;transform:translateX(0);margin-top:0;transition:grid-template-rows .24s ease,margin-top .24s ease,transform .24s ease,opacity .16s ease .08s}
+.sidebar-folder-intro>div{min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px;width:210px}
+.sidebar-folder-intro .sidebar-heading{align-self:flex-start}.sidebar-folder-intro .folder-help{max-width:200px}
+#authenticated-app.sidebar-collapsed .sidebar-folder-intro{grid-template-rows:0fr;opacity:0;transform:translateX(-6px);margin-top:-12px;pointer-events:none;transition:grid-template-rows .24s ease,margin-top .24s ease,transform .24s ease,opacity .1s ease}
+#authenticated-app.sidebar-collapsed .sidebar-branding{padding:0 6px;gap:4px}
+#authenticated-app.sidebar-collapsed .sidebar-branding .brand-name{display:none}
+#authenticated-app.sidebar-collapsed .sidebar-branding .brandmark{width:28px;height:28px;border-radius:9px}
+#authenticated-app.sidebar-collapsed .sidebar-toggle{width:30px;padding:4px}
+#authenticated-app.sidebar-collapsed .sidebar{padding:24px 12px}
+#authenticated-app.sidebar-collapsed .sidebar .nav-label,
+#authenticated-app.sidebar-collapsed .folder-copy,
+#authenticated-app.sidebar-collapsed .folder-delete,
+#authenticated-app.sidebar-collapsed .collection-button>.icon:last-child{display:none}
+#authenticated-app.sidebar-collapsed .sidebar .social-nav button,
+#authenticated-app.sidebar-collapsed .new-folder-button,
+#authenticated-app.sidebar-collapsed .collection-button{width:50px;min-width:0;min-height:46px;justify-content:center;padding:12px;gap:0}
+#authenticated-app.sidebar-collapsed .new-folder-button{border:0;border-top:1px solid var(--line);border-radius:0;padding-top:18px;min-height:54px}
+#authenticated-app.sidebar-collapsed .folder-row{display:block}
+#authenticated-app.sidebar-collapsed .collection-nav{max-height:calc(100dvh - 360px)}
+@media(min-width:851px) and (max-width:1200px){#authenticated-app{--sidebar-expanded:240px}}
 @media(max-width:850px){
-  #authenticated-app:not(.practice-page) .app-shell,#authenticated-app.sidebar-collapsed:not(.practice-page) .app-shell{grid-template-columns:minmax(0,1fr)}
-  #authenticated-app:not(.practice-page) .sidebar{max-height:380px;transition:max-height .24s ease,transform .24s ease,opacity .2s ease,padding .24s ease,visibility 0s}
-  #authenticated-app.sidebar-collapsed .sidebar{max-height:0;padding-top:0;padding-bottom:0;border-bottom:0;transition:max-height .24s ease,transform .24s ease,opacity .2s ease,padding .24s ease,visibility 0s .24s}
-  .app-header{gap:12px}.sidebar-toggle{width:32px;padding:5px}.brand{gap:8px}
+  #authenticated-app{--sidebar-rail:64px;--library-sidebar-space:var(--sidebar-rail)}
+  .app-header{height:70px}
+  .app-header .header-actions{padding:0 12px;gap:6px}
+  #authenticated-app:not(.practice-page) .app-shell{grid-template-columns:var(--sidebar-rail) minmax(0,1fr);min-height:calc(100dvh - 70px)}
+  #authenticated-app:not(.practice-page) .sidebar{grid-column:1;grid-row:1;max-height:none;border-bottom:0;padding:18px 8px;z-index:30;background:var(--sidebar)}
+  #authenticated-app:not(.sidebar-collapsed):not(.practice-page) .sidebar{position:fixed;top:70px;bottom:0;left:0;width:var(--sidebar-expanded);padding:18px 14px;box-shadow:14px 0 28px #0004;overflow-y:auto}
+  #authenticated-app:not(.practice-page) .main-content{grid-column:2;grid-row:1;padding:24px 16px}
+  #authenticated-app.sidebar-collapsed .sidebar{padding:18px 7px}
+  #authenticated-app.sidebar-collapsed .sidebar .social-nav button,
+  #authenticated-app.sidebar-collapsed .new-folder-button,
+  #authenticated-app.sidebar-collapsed .collection-button{width:48px}
+  #authenticated-app.sidebar-collapsed .sidebar-branding{padding:0 4px;gap:2px}
+  #authenticated-app.sidebar-collapsed .sidebar-toggle{width:26px;padding:2px}
+  #authenticated-app.sidebar-collapsed .sidebar-branding .brandmark{width:26px;height:28px}
+  .sidebar .folder-row{min-width:0}.sidebar .collection-nav{max-height:calc(100dvh - 380px)}
+  .sidebar .collection-button>.icon:last-child{display:block}
 }
-@media(max-width:580px){.app-header{padding:0 12px;gap:8px}.sidebar-toggle{width:28px}.brand{font-size:18px}.account-name{max-width:68px;font-size:10px}.brandmark{width:32px;height:32px}}
+@media(max-width:580px){.sidebar-branding .brand{font-size:18px}.app-header .account-name{max-width:62px;font-size:10px}.app-header .header-actions{padding:0 8px}.app-header #header-create{display:none}}
+@media(prefers-reduced-motion:reduce){.sidebar-branding,#authenticated-app:not(.practice-page) .app-shell,#authenticated-app:not(.practice-page) .sidebar{transition:none}}
 
 /* Study guides use a continuous reading layout with typeset equations. */
 .cheatsheet{max-width:920px}.sheet-sections{grid-template-columns:minmax(0,1fr)}
@@ -461,3 +502,39 @@
 @media(max-width:700px){.agent-view{height:calc(100dvh - 135px);min-height:480px;gap:16px}.agent-header{align-items:flex-start;gap:15px;flex-wrap:wrap}.agent-header h1,.groups-heading h1{font-size:25px}.agent-folder{max-width:none;min-width:0;width:100%;flex-basis:100%}.agent-empty{padding:28px 5px 15px}.agent-empty h2{font-size:25px}.agent-message{max-width:96%}.agent-result{padding:17px}.agent-ready{display:none}.agent-composer{padding:14px}.agent-composer textarea{font-size:16px}}
 
 @media(max-width:700px){.groups-heading{align-items:flex-start;gap:15px;flex-wrap:wrap}.groups-heading>div:last-child{flex-wrap:wrap;justify-content:flex-start}.groups-description{margin-top:16px}}
+
+/* Library tabs share a fixed origin, toolbar slots, and card dimensions. */
+html{scrollbar-gutter:stable}
+.main-content:has(#library-view:not([hidden])){margin-block:0}
+.library-selector{max-width:520px}
+.library-folder-controls{display:flex;align-items:center;gap:10px;min-width:0}
+.library-folder-controls>.select-control{flex:1;min-width:0}
+.library-folder-controls .rename-folder{flex:none;min-height:44px;padding:10px 13px;font-size:13px}
+.library-toolbar{min-height:52px}
+.library-search-controls{display:grid;grid-template-columns:160px minmax(0,250px);width:420px;max-width:100%;gap:10px;flex:none}
+.library-search-controls>[data-select="set-format-filter"]{grid-column:1;grid-row:1;width:100%}
+.library-search-controls>.library-search{grid-column:2;grid-row:1;width:100%;max-width:none;min-width:0;margin:0 0 8px}
+#sets-panel,#materials-panel,#bank-panel{min-height:260px}
+#library-view .quiz-grid,#library-view .materials-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0}
+#library-view .quiz-card,#library-view .material-card{height:240px;min-height:240px}
+#library-view .set-open{min-height:0}
+#library-view .material-card{display:flex;flex-direction:column;padding:21px;border-radius:15px;background:#242c3d;border:1px solid #344056}
+#library-view .material-title strong{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;font-size:16px;line-height:1.5}
+#library-view .material-state{margin:14px 0;font-size:12px}
+#library-view .material-actions{margin-top:auto}
+.materials-items{display:contents}
+#materials-add{margin:0}
+@media(max-width:1200px){#library-view .quiz-grid,#library-view .materials-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1050px){.library-search-controls{width:100%;flex-basis:100%;grid-template-columns:160px minmax(0,1fr)}}
+@media(max-width:580px){#library-view .quiz-grid,#library-view .materials-grid{grid-template-columns:minmax(0,1fr)}.library-search-controls{grid-template-columns:110px minmax(0,1fr);gap:8px}.library-folder-controls{gap:8px}.library-folder-controls .rename-folder{padding:10px;font-size:12px}}
+
+@media(prefers-reduced-motion:reduce){.sidebar-folder-intro,#authenticated-app.sidebar-collapsed .sidebar-folder-intro{transition:none;transform:none}}
+
+/* Language is a local UI preference, separate from study content. */
+.language-control{display:flex;align-items:center;max-width:100%}
+.language-control>.select-control{width:auto;flex:none}
+.language-control .select-trigger{width:auto;min-height:0;padding:8px 11px;gap:0;border:0;border-radius:6px;background:transparent;box-shadow:none;color:var(--muted);font-size:11px;font-weight:650;line-height:16px}
+.language-control .select-trigger>.icon,.language-control .select-chevron{display:none}
+.language-control .select-trigger:hover:not(:disabled),.language-control .select-trigger[aria-expanded=true]{background:transparent;color:var(--ink);box-shadow:none;text-decoration:underline;text-underline-offset:3px}
+#language-select-menu [role=option]{font-size:12px;padding:10px}
+html[lang="zh-Hans"]{font-family:'Avenir Next','PingFang SC','Microsoft YaHei','Segoe UI',sans-serif}

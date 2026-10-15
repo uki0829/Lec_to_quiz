@@ -68,6 +68,10 @@ Quiz generation and visual interpretation use the Responses API with structured 
 
 ## Study dashboard
 
+The bottom **Language** menu switches interface controls between **English** and **简体中文** and remembers the choice locally. It replaces the former Import set action. Lecture files, user names, folder/set titles, generated questions, explanations, and equations keep their original text; this preference does not request a new language from the generation model.
+
+The three-line menu expands the sidebar or collapses it to a clickable icon rail. Navigation and folder icons retain accessible names and tooltips. Branding stays within the same sidebar column; on mobile the expanded sidebar overlays content. The appearance preference persists locally.
+
 The interface keeps names, controls, file limits, and essential status. Decorative descriptions and footer annotations are removed; brief UI hints stay under ten words. Lecture content and quiz explanations remain complete.
 
 Click **Create new**, Flashcards, Quiz, Calculation, or Cheat Sheet to start with **Add your lecture**. The first step shows the accepted file types and limits, a drop/browse upload, and an optional notes field. Click **Upload and continue**; topic and practice settings appear only after extraction and search indexing succeed. Failed processing stays on the upload step with a retry control.

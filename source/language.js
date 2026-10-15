@@ -1,0 +1,317 @@
+// UI-only localization. Source text, names, requests, and generated study content stay verbatim.
+(() => {
+  const catalogue = {
+  "Home": "首页",
+  "Agent": "学习助手",
+  "Study agent": "学习助手",
+  "Study groups": "学习小组",
+  "Study folders": "学习文件夹",
+  "Keep lectures for one course together.": "将同一课程的资料放在一起。",
+  "New folder": "新建文件夹",
+  "Study folder": "学习文件夹",
+  "Create new": "新建",
+  "Rename": "重命名",
+  "Rename folder": "重命名文件夹",
+  "Flashcards": "闪卡",
+  "Flashcard": "闪卡",
+  "Quiz": "测验",
+  "Multiple choice": "选择题",
+  "Calculation": "计算练习",
+  "Cheat Sheet": "知识速查表",
+  "Cheat sheet": "知识速查表",
+  "Sets": "学习集",
+  "Materials": "学习资料",
+  "Question bank": "题库",
+  "Set type": "学习集类型",
+  "All types": "全部类型",
+  "Search sets": "搜索学习集",
+  "Search materials": "搜索资料",
+  "Search starred cards": "搜索收藏题目",
+  "Create study set": "创建学习集",
+  "Add another lecture": "添加课程资料",
+  "View sources": "查看来源",
+  "Practice starred": "练习收藏题目",
+  "Import set": "导入学习集",
+  "Saved quizzes": "已保存的测验",
+  "Choose a tool": "选择工具",
+  "Study": "学习",
+  "Continue": "继续",
+  "Open sheet": "打开速查表",
+  "Open guide": "打开速查表",
+  "Practice": "练习",
+  "Start practice": "开始练习",
+  "Your lectures. Your next challenge.": "用课程资料，开启新的练习。",
+  "What would you like to practice?": "你想练习什么？",
+  "Quiz me": "生成测验",
+  "Make flashcards": "生成闪卡",
+  "Practice calculations": "计算练习",
+  "Ask the study agent": "向学习助手提问",
+  "Create six questions about…": "生成六道关于……的题目",
+  "Add materials": "添加资料",
+  "Send": "发送",
+  "You": "你",
+  "Your study set is ready.": "学习集已准备好。",
+  "Understanding your request…": "正在理解你的要求……",
+  "Creating your study set.": "正在创建学习集。",
+  "Try again": "重试",
+  "Cancel": "取消",
+  "Cancelling…": "正在取消……",
+  "Join group": "加入小组",
+  "Create group": "创建小组",
+  "Share practice. Learn together.": "分享练习，共同学习。",
+  "All groups": "全部小组",
+  "Demo group": "示例小组",
+  "Share a set": "分享学习集",
+  "Invite code": "邀请码",
+  "Group name": "小组名称",
+  "Copy": "复制",
+  "Share": "分享",
+  "Share with group": "分享到小组",
+  "Study group": "学习小组",
+  "Study set": "学习集",
+  "Share questions and excerpts. Original files stay private.": "分享题目和摘录，原始文件保持私密。",
+  "Bring your study circle together.": "和同学一起学习。",
+  "Create a group or join with an invite code.": "创建小组，或输入邀请码加入。",
+  "Share your first study set.": "分享你的第一个学习集。",
+  "Create another set": "创建另一个学习集",
+  "View original request": "查看原始要求",
+  "Choose a study set": "选择学习集",
+  "Previous": "上一题",
+  "Next": "下一题",
+  "Back": "返回",
+  "Explanation": "解析",
+  "Contents": "目录",
+  "Get a hint": "获取提示",
+  "Hide hint": "收起提示",
+  "Getting hint…": "正在获取提示……",
+  "Don’t know?": "还不确定？",
+  "Choose an answer": "选择答案",
+  "Correct answer": "回答正确",
+  "Incorrect answer": "回答错误",
+  "Your answer, incorrect": "你的答案不正确",
+  "Your numeric answer": "你的数值答案",
+  "Type answer and press Enter": "输入答案并按回车",
+  "Need a starting point?": "需要一点提示？",
+  "Substitute given values into the relevant formula.": "将已知数值代入相应公式。",
+  "Let’s work through it.": "一起来看看解题过程。",
+  "Completed": "已完成",
+  "Remaining": "剩余",
+  "Reviewed": "已复习",
+  "Answered": "已作答",
+  "Correct": "正确",
+  "Incorrect": "错误",
+  "Not reviewed": "尚未复习",
+  "Not answered": "尚未作答",
+  "Skipped": "已跳过",
+  "Restart flashcards": "重新开始闪卡",
+  "Restart quiz": "重新开始测验",
+  "Back to last question": "返回上一题",
+  "Continue to Home": "返回首页",
+  "Question summary": "题目总结",
+  "How you did": "学习情况",
+  "Next steps": "下一步",
+  "Review your questions": "回顾题目",
+  "Save": "保存",
+  "Name": "名称",
+  "Rename set": "重命名学习集",
+  "Save folder": "保存文件夹",
+  "Folder name": "文件夹名称",
+  "New study folder": "新建学习文件夹",
+  "Add lecture materials": "添加课程资料",
+  "Drop files or browse": "拖入文件或点击选择",
+  "Paste notes": "粘贴笔记",
+  "Paste lecture notes…": "粘贴课程笔记……",
+  "Clear upload": "清除上传",
+  "Add your lecture": "添加课程资料",
+  "Customize": "自定义",
+  "Upload lecture": "上传课程资料",
+  "Drop a file here": "将文件拖到这里",
+  "or click to browse": "或点击选择",
+  "Images": "图片",
+  "Audio / video": "音频 / 视频",
+  "4 files maximum": "最多四个文件",
+  "Paste your lecture content…": "粘贴课程内容……",
+  "Upload and continue": "上传并继续",
+  "Your lecture is ready": "课程资料已准备好",
+  "Change material": "更换资料",
+  "Study folder & previous set": "文件夹与上次练习",
+  "View materials": "查看资料",
+  "Previous set (optional)": "上次的学习集（可选）",
+  "No previous set": "不使用上次的学习集",
+  "Use saved lectures instead": "使用已保存的课程资料",
+  "What should we focus on?": "你想重点练习什么？",
+  "Topic or instructions": "主题或要求",
+  "Format": "练习形式",
+  "Difficulty": "难度",
+  "Beginner": "基础",
+  "Intermediate": "中等",
+  "Advanced": "进阶",
+  "Questions": "题目数量",
+  "Question count": "题目数量",
+  "Create flashcards": "创建闪卡",
+  "Create quiz": "创建测验",
+  "Create calculation practice": "创建计算练习",
+  "Create cheat sheet": "创建知识速查表",
+  "Create Cheat Sheet": "创建知识速查表",
+  "Generate quiz": "生成测验",
+  "Generate": "生成",
+  "Creating…": "正在生成……",
+  "Adding materials…": "正在添加资料……",
+  "Retry generation": "重新生成",
+  "Edit request": "修改要求",
+  "No materials match.": "没有匹配的资料。",
+  "No study sets match that search.": "没有匹配的学习集。",
+  "Add your first lecture.": "添加第一份课程资料。",
+  "Ready for practice": "可以开始练习",
+  "Empty": "空文件夹",
+  "Choose a study folder": "选择学习文件夹",
+  "Choose a set": "选择学习集",
+  "Choose an option": "请选择",
+  "Add lectures to begin": "先添加课程资料",
+  "Welcome back": "欢迎回来",
+  "Keep learning where you left off.": "继续上次的学习。",
+  "Continue with Google": "使用 Google 登录",
+  "or email": "或使用邮箱",
+  "Email": "邮箱",
+  "Password": "密码",
+  "At least 8 characters": "至少八个字符",
+  "Sign in": "登录",
+  "Sign out": "退出登录",
+  "Create an account": "创建账号",
+  "Create account": "创建账号",
+  "Explore demo": "体验示例",
+  "Your next chapter": "开启新的学习篇章",
+  "Create your personal study space.": "创建你的专属学习空间。",
+  "Already have an account? Sign in": "已有账号？登录",
+  "Your lectures, your practice, your study group.": "你的资料、练习和学习小组。",
+  "Learn it.": "学习。",
+  "Practice it.": "练习。",
+  "Share it.": "分享。",
+  "Delete permanently": "永久删除",
+  "Delete folder": "删除文件夹",
+  "Delete set": "删除学习集",
+  "Remove": "移除",
+  "Delete": "删除",
+  "Expand sidebar": "展开侧边栏",
+  "Collapse sidebar": "收起侧边栏",
+  "Hide sidebar": "收起侧边栏",
+  "Show sidebar": "展开侧边栏",
+  "Close material uploader": "关闭资料上传",
+  "Close study set creator": "关闭学习集创建窗口",
+  "Close folder editor": "关闭文件夹编辑",
+  "Close rename set": "关闭重命名窗口",
+  "Close explanation": "关闭解析",
+  "Close sharing": "关闭分享窗口",
+  "Mute sounds": "关闭音效",
+  "Enable sounds": "开启音效",
+  "Sounds on": "音效开启",
+  "Sounds off": "音效关闭",
+  "Show question": "显示问题",
+  "Show answer": "显示答案",
+  "Star card": "收藏卡片",
+  "Unstar card": "取消收藏",
+  "Save to question bank": "保存到题库",
+  "Save a generated card": "保存生成的卡片",
+  "Language": "语言"
+};
+  Object.assign(catalogue, {
+    'Skip to Create new':'跳转到首页','Study navigation':'学习导航','Main navigation':'主导航',
+    'Collection content':'文件夹内容','Interactive practice':'互动练习','Agent conversation':'助手对话',
+    'Processing status':'处理状态','Question navigation':'题目导航','Quiz progress':'测验进度',
+    'Creation steps':'创建步骤','Customize your practice':'自定义练习','Cheat sheet sections':'速查表章节',
+    'Notes for this study set':'本学习集笔记','Upload lecture files':'上传课程文件',
+    'Upload lecture materials':'上传课程资料','Lecture Lab library':'Lecture Lab 资料库',
+    'Close group editor':'关闭小组编辑','Worked solution':'解题步骤','Show summary':'查看总结',
+    'Hint':'提示','Answer':'答案','Review':'回顾','Restart':'重新开始',
+    'New practice, same topic':'同一主题，新的练习','Question summary':'题目总结',
+    'Use saved lectures':'使用已保存的课程资料','What do you want to practice?':'你想练习什么？',
+    'Instructions':'要求','Practice format':'练习形式','Question count':'题目数量',
+    'Create calculations':'创建计算练习','Create a cheat sheet':'创建知识速查表',
+    'PDF · Image · Audio · Video · TXT':'PDF · 图片 · 音频 · 视频 · TXT'
+  });
+  const control=document.querySelector('#language-select');
+  const cache=new WeakMap();
+  const protectedContent=[
+    'script','style','textarea','input','code','pre','.katex','[data-no-translate]',
+    '#quiz-title','#sheet-title','#original-request','#question-prompt','.option-text',
+    '.flash-hint-text','.feedback','.source-ref','#quiz-explanation-content',
+    '#sheet-sections','#sheet-nav','#source-content','#material-summary',
+    '.folder-copy','.material-title','.group-card strong','#group-title','.member-chip',
+    '.quiz-card h3','.agent-result h2','.agent-source','.from-user',
+    '#account-name','#collection-overview','#collection-breadcrumb','#loaded-title',
+    '#composer-uploaded','#composer-file-list','#file-list','.completion-questions li>span',
+    '#saved-materials option','#saved-quizzes option','#composer-parent option',
+    '#collection-filter option','#composer-collection option','#agent-collection option',
+    '#share-group option','#share-set option','#language-select option',
+    '[data-select="collection-filter"] .select-value','[data-select="composer-collection"] .select-value',
+    '[data-select="agent-collection"] .select-value','[data-select="composer-parent"] .select-value',
+    '[data-select="share-group"] .select-value','[data-select="share-set"] .select-value',
+    '#collection-filter-menu .menu-option-copy','#composer-collection-menu .menu-option-copy',
+    '#agent-collection-menu .menu-option-copy','#composer-parent-menu .menu-option-copy',
+    '#share-group-menu .menu-option-copy','#share-set-menu .menu-option-copy',
+    '[data-select="language-select"]','#language-select-menu'
+  ].join(',');
+  let language='en',scheduled=false;
+  try{language=localStorage.getItem('lecture-lab-language')==='zh-Hans'?'zh-Hans':'en';}catch{}
+  function translate(text){
+    if(catalogue[text])return catalogue[text];
+    const patterns=[
+      [/^Question (\d+) of (\d+)$/,(_,n,total)=>`第 ${n} 题，共 ${total} 题`],
+      [/^Question (\d+)$/,(_,n)=>`第 ${n} 题`],
+      [/^(\d+) questions$/,(_,n)=>`${n} 道题`],
+      [/^(\d+) sections$/,(_,n)=>`${n} 个章节`],
+      [/^(\d+) lecture sources?$/,(_,n)=>`${n} 处课程来源`],
+      [/^(\d+) lectures? ready$/,(_,n)=>`${n} 份资料可用`],
+      [/^(\d+) files?$/,(_,n)=>`${n} 个文件`],
+      [/^(\d+) notes?$/,(_,n)=>`${n} 份笔记`],
+      [/^Ready for practice · (\d+) source sections$/,(_,n)=>`可以开始练习 · ${n} 处来源`],
+      [/^(\d+) members · (\d+) sets( · Demo)?$/,(_,m,n,d)=>`${m} 位成员 · ${n} 个学习集${d?' · 示例':''}`],
+      [/^(Flashcards|Quiz|Calculation|Cheat Sheet) · (\d+) (questions|sections)$/,(_,kind,n,unit)=>`${catalogue[kind]} · ${n} ${unit==='questions'?'道题':'个章节'}`],
+      [/^Continue · (\d+)\/(\d+)$/,(_,n,total)=>`继续 · ${n}/${total}`],
+      [/^Study folder: (.+)$/,(_,name)=>`学习文件夹：${name}`]
+    ];
+    for(const [pattern,render] of patterns)if(pattern.test(text))return text.replace(pattern,render);
+    return text;
+  }
+  function localizeText(node){
+    const parent=node.parentElement;
+    if(!parent||parent.closest(protectedContent))return;
+    const value=node.nodeValue,trimmed=value.trim();if(!trimmed)return;
+    let record=cache.get(node);
+    if(!record||value!==record.output)record={original:value,output:value};
+    const source=record.original.trim();
+    const next=language==='en'?record.original:record.original.replace(source,translate(source));
+    record.output=next;cache.set(node,record);if(value!==next)node.nodeValue=next;
+  }
+  const attributes=new WeakMap();
+  function localizeAttribute(el,name){
+    if(el.matches('[data-collection]')||el.closest('[data-no-translate],.from-user,.material-title,.folder-copy,.agent-result h2,.quiz-card h3')||el.matches('input:not([type=search]),textarea')&&name!=='placeholder'&&name!=='aria-label')return;
+    const value=el.getAttribute(name);if(!value)return;
+    const records=attributes.get(el)||{};let record=records[name];
+    if(!record||value!==record.output)record={original:value,output:value};
+    const next=language==='en'?record.original:translate(record.original);
+    record.output=next;records[name]=record;attributes.set(el,records);
+    if(value!==next)el.setAttribute(name,next);
+  }
+  function apply(){
+    scheduled=false;observer.disconnect();
+    document.documentElement.lang=language;
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    let node;while(node=walker.nextNode())localizeText(node);
+    document.querySelectorAll('[aria-label],[title],[placeholder]').forEach(el=>{
+      for(const name of ['aria-label','title','placeholder'])localizeAttribute(el,name);
+    });
+    observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['aria-label','title','placeholder']});
+  }
+  const observer=new MutationObserver(()=>{if(!scheduled){scheduled=true;queueMicrotask(apply);}});
+  control.value=language;
+  control.addEventListener('change',()=>{
+    language=control.value==='zh-Hans'?'zh-Hans':'en';
+    try{localStorage.setItem('lecture-lab-language',language);}catch{}
+    apply();
+    // Custom menus mirror native options; update labels before the next paint.
+    if(typeof syncMenus==='function')syncMenus();
+  });
+  apply();
+  if(typeof syncMenus==='function')syncMenus();
+})();

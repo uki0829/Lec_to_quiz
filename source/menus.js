@@ -5,6 +5,7 @@
   function optionIcon(control,option){
     if(control.select.id==='share-group')return 'users';
     if(control.select.id==='share-set')return ({flashcard:'layers',mcq:'clipboard-list',calculation:'calculator',cheatsheet:'file-text'})[option.dataset.format]||'book-open';
+    if(control.select.id==='language-select')return 'languages';
     if(['collection-filter','composer-collection','agent-collection'].includes(control.select.id))return 'folder';
     if(control.select.id==='set-format-filter')return ({flashcard:'layers',mcq:'clipboard-list',calculation:'calculator',cheatsheet:'file-text'})[option.value]||'layers';
     return control.select.id==='composer-parent'?'book-open':'sparkles';
@@ -16,7 +17,7 @@
     openControl=null;typeBuffer='';
   }
   function position(control){
-    const rect=control.trigger.getBoundingClientRect(),width=Math.min(Math.max(rect.width,control.select.id==='set-format-filter'?200:280),innerWidth-24);
+    const rect=control.trigger.getBoundingClientRect(),width=Math.min(Math.max(rect.width,control.select.id==='language-select'?180:control.select.id==='set-format-filter'?200:280),innerWidth-24);
     control.panel.style.width=width+'px';
     const height=Math.min(control.panel.scrollHeight,300,innerHeight-24);
     const below=innerHeight-rect.bottom-12,above=rect.top-12;

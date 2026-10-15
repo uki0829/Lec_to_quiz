@@ -1,5 +1,27 @@
 # Verification record
 
+## English and Simplified Chinese UI, October 15, 2026
+
+- Replaced the library footer Import set action with a styled Language selector offering English and 简体中文. The language preference is stored locally and sets the document language. Shared UI labels, placeholders, accessible control names, and common dynamic counts update without changing option values or study data.
+- The localization layer preserves source material, generated question/answer/explanation text, equations, user requests, names, and folder/set titles. This is interface localization, not automatic translation of generated content. Unmapped provider messages remain in their original language.
+- Verified Chinese library navigation, Materials metadata, the upload dialog, dynamic controls, refresh persistence, and return to English. Original file/set titles stayed unchanged. Existing frontend and creator checks, JS syntax, and whitespace checks passed.
+
+## Matching lecture-add card and sidebar motion, October 15, 2026
+
+- Add another lecture now shares the dashed Create study set card style, dimensions, and grid placement. Its existing upload action is preserved, including the selected study folder.
+- Wrapped the sidebar folder heading/help in a stable-width disclosure so text fades and the section height animates without wrapping during collapse. Collapsed text is hidden from assistive technology, icon navigation stays available, and reduced-motion preferences disable the transition.
+- Verified the lecture card opens the upload dialog without uploading or changing materials, plus sidebar expand/collapse. Creator checks, JS syntax, and whitespace checks passed.
+
+## Stable library tabs, October 15, 2026
+
+- Anchored the library at the top rather than vertically centering it according to the active panel height. Reserved the toolbar filter slot, stabilized scrollbar space, and matched Sets/Materials grid columns and 240px card dimensions. Tool cards and folder controls no longer move when switching tabs.
+- Removed the library header Add materials control and moved Rename beside the folder selector. Agent uploads now call the existing upload function directly. Add another lecture remains available within Materials. Verified desktop tab positions/card dimensions and opening/cancelling Rename without changing saved data. Creator/Agent checks, JS syntax, and whitespace checks passed.
+
+## Collapsible icon navigation, October 15, 2026
+
+- Replaced the chevron toggle with the official bundled Lucide menu icon. Expanded navigation keeps labels and folders; collapsed navigation retains working, keyboard-accessible icons with labels/tooltips rather than becoming inert. Branding fits within the same column in both states. The local collapse preference remains compatible.
+- Verified desktop expand/collapse, navigation to Agent through the rail, and branding bounds. At 390×844 the rail and expanded overlay fit without horizontal page overflow. Mobile content retains a narrow rail column; desktop content gains the released sidebar space. Syntax and whitespace checks passed.
+
 ## Sidebar study agent, October 15, 2026
 
 - Added a folder-scoped Agent conversation with a styled folder selector, request composer, quick suggestions, Add materials, job status/cancellation, retry, source links, and explicit opening of generated study sets. It reuses the existing RAG generation tool rather than generating ungrounded answers in the planning call. Account ownership, folder isolation, frozen ready-material snapshots, source validation, and numerical checks remain enforced.

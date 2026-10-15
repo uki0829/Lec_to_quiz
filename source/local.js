@@ -35,7 +35,7 @@ async function flushPracticeProgress(){
 }
 function setBusy(value) {
   busy=value;$('#composer-processing').hidden=!value;
-  for(const id of ['generate','process-material','files','composer-files','notes','composer-notes','request','difficulty','composer-collection','composer-parent','reset-material','saved-materials','create-collection','rename-collection','build-followup','saved-quizzes','header-create','open-composer','open-upload','materials-add','collection-filter','upload-continue','use-saved-materials','composer-back','composer-retry'])$('#'+id).disabled=value;
+  for(const id of ['generate','process-material','files','composer-files','notes','composer-notes','request','difficulty','composer-collection','composer-parent','reset-material','saved-materials','create-collection','rename-collection','build-followup','saved-quizzes','header-create','open-composer','materials-add','collection-filter','upload-continue','use-saved-materials','composer-back','composer-retry'])$('#'+id).disabled=value;
   document.querySelectorAll('[data-module],[data-format],[data-count],.collection-button,.folder-delete,.material-actions button').forEach(b=>b.disabled=value);
   $('#rename-collection').disabled=value||!collectionId;
   $('#generate').textContent=value?'Creating…':generationLabel();
@@ -94,7 +94,7 @@ function folderContents(c){
   return parts.join(' · ')||(c.materialCount?c.materialCount+' upload'+(c.materialCount===1?'':'s'):'Empty');
 }
 function renderCollectionNav(){
-  const markup=collectionRows.map(c=>'<div class="folder-row"><button class="collection-button" data-collection="'+esc(c.id)+'" aria-current="'+String(c.id===collectionId)+'" title="'+esc(c.name)+'">'+icon('folder')+'<span class="folder-copy"><strong class="folder-name">'+esc(folderName(c.name))+'</strong><small class="folder-count">'+esc(folderContents(c))+'</small></span>'+icon('chevron-right')+'</button><button class="folder-delete icon-button" data-delete-folder="'+esc(c.id)+'" aria-label="Delete folder '+esc(folderName(c.name))+'" title="Delete folder">'+icon('trash-2')+'</button></div>').join('');
+  const markup=collectionRows.map(c=>'<div class="folder-row"><button class="collection-button" aria-label="'+esc(folderName(c.name))+'" data-collection="'+esc(c.id)+'" aria-current="'+String(c.id===collectionId)+'" title="'+esc(c.name)+'">'+icon('folder')+'<span class="folder-copy"><strong class="folder-name">'+esc(folderName(c.name))+'</strong><small class="folder-count">'+esc(folderContents(c))+'</small></span>'+icon('chevron-right')+'</button><button class="folder-delete icon-button" data-delete-folder="'+esc(c.id)+'" aria-label="Delete folder '+esc(folderName(c.name))+'" title="Delete folder">'+icon('trash-2')+'</button></div>').join('');
   if($('#collection-nav').innerHTML!==markup){$('#collection-nav').innerHTML=markup;$('#collection-nav').querySelectorAll('[data-collection]').forEach(b=>b.onclick=()=>selectCollection(b.dataset.collection).catch(err=>message(err.message,true)));}
   $('#collection-nav').querySelectorAll('[data-delete-folder]').forEach(b=>b.onclick=()=>previewFolderDeletion(b.dataset.deleteFolder,b));
   $('#collection-nav').querySelectorAll('button').forEach(b=>b.disabled=busy);
@@ -448,7 +448,7 @@ function friendlyJobError(job){
 $('#brand-home').onclick=()=>{const fromStudy=currentView==='study';showView('library');if(fromStudy)setLibraryTab('sets');saveSnapshot();};
 $('#back-library').onclick=()=>{showView('library');setLibraryTab('sets');saveSnapshot($('#summary').hidden===false);};
 for(const id of ['header-create','open-composer'])$('#'+id).onclick=()=>openComposer();
-for(const id of ['open-upload','materials-add'])$('#'+id).onclick=openUpload;
+$('#materials-add').onclick=openUpload;
 document.querySelectorAll('[data-module]').forEach(b=>b.onclick=()=>openComposer(b.dataset.module));
 $('#composer-cancel').onclick=()=>$('#cancel-job').click();
 $('#composer-retry').onclick=()=>{if(composerJobId){lastFailedJob=composerJobId;$('#retry-job').click();}};

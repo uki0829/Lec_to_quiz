@@ -252,5 +252,5 @@ function validateImportedSheet(q){
     ids.add(s.id);
   }return {...q,questions:[]};
 }
-$('#import-btn').onclick=()=>$('#import-file').click();$('#import-file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>1024*1024)throw Error('Import a quiz smaller than 1 MB.');const raw=JSON.parse(await f.text());const q=validateImported({...raw,mode:raw?.mode==='sample'?'sample':'imported'});startQuiz({...q,format:q.format||q.questions[0].type});message('Set imported.');}catch(err){message(err.message,true);}e.target.value='';};
+$('#import-file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>1024*1024)throw Error('Import a quiz smaller than 1 MB.');const raw=JSON.parse(await f.text());const q=validateImported({...raw,mode:raw?.mode==='sample'?'sample':'imported'});startQuiz({...q,format:q.format||q.questions[0].type});message('Set imported.');}catch(err){message(err.message,true);}e.target.value='';};
 window.__lectureLab={samples,gradeNumeric,validateImported,inferRequestedFormat,sampleSheet,validateImportedSheet};

@@ -145,5 +145,5 @@ $('#agent-collection').onchange=async event=>{if(busy)return;try{await selectCol
 $('#agent-form').onsubmit=event=>{event.preventDefault();sendAgentMessage();};
 $('#agent-input').oninput=syncAgentState;
 $('#agent-input').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.repeat){event.preventDefault();sendAgentMessage();}};
-$('#agent-add').onclick=()=>{if(!collectionId)$('#create-collection').click();else $('#open-upload').click();};
+$('#agent-add').onclick=()=>{if(!collectionId)$('#create-collection').click();else openUpload();};
 document.querySelectorAll('[data-agent-suggestion]').forEach(b=>b.onclick=()=>{$('#agent-input').value=b.dataset.agentSuggestion;syncAgentState();$('#agent-input').focus();});
