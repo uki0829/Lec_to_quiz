@@ -41,7 +41,7 @@ $('#sign-out').onclick=async()=>{
   cancelQuizAdvance();closeQuizExplanation();
   try{if(busy||activeJob){message('Finish or cancel processing before signing out.',true);return;}
     await flushPracticeProgress();await api('/api/auth/logout',{method:'POST'});
-    currentUser=null;currentGroupId=null;if(typeof syncPracticePage==='function')syncPracticePage('library');quiz=null;answers={};index=0;collectionId=null;currentCollection=null;savedSets=[];bankRows=[];attachments=[];parentQuizId=null;parentQuizTitle='';materialId=null;lastFailedJob=null;pendingGeneration=null;
+    if(typeof resetAgentSession==='function')resetAgentSession();currentUser=null;currentGroupId=null;if(typeof syncPracticePage==='function')syncPracticePage('library');quiz=null;answers={};index=0;collectionId=null;currentCollection=null;savedSets=[];bankRows=[];attachments=[];parentQuizId=null;parentQuizTitle='';materialId=null;lastFailedJob=null;pendingGeneration=null;
     $('#notes').value='';$('#composer-notes').value='';$('#request').value='';
     $('#summary').hidden=true;$('#study').hidden=true;$('#cheatsheet').hidden=true;$('#empty').hidden=false;$('#job-panel').hidden=true;
     for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();

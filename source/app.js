@@ -115,6 +115,23 @@ function submitChoice(choice,skipped=false){
        (typeof currentView==='undefined'||currentView==='study'))advanceQuiz();
   },550);
 }
+function submitCalculation(){
+  const q=quiz?.questions?.[index];
+  if(q?.type!=='calculation'||(answers[q.id]?.submitted&&answers[q.id]?.correct))return;
+  const value=$('#number-answer').value.trim();
+  const correct=gradeNumeric(value,q.numericAnswer,q.tolerance);
+  if(correct===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}
+  answers[q.id]={value,submitted:true,correct};
+  playAnswerSound(correct);
+  render();
+  if(!correct){$('#number-answer').focus({preventScroll:true});$('#number-answer').select?.();}
+  if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){
+    $('#numeric-answer-field')?.animate?.(correct?
+      [{transform:'scale(1)'},{transform:'scale(1.015)'},{transform:'scale(1)'}]:
+      [{transform:'translateX(0)'},{transform:'translateX(-5px)'},{transform:'translateX(5px)'},{transform:'translateX(0)'}],
+      {duration:correct?280:220,easing:'ease-out'});
+  }
+}
 function renderQuizProgress(){
   const target=$('#quiz-progress');target.hidden=quiz.questions[index].type!=='mcq';
   if(target.hidden)return;
@@ -132,7 +149,7 @@ if(q.type==='mcq'){
     '</div></div><div class="quiz-bottom-actions">'+(a.submitted?'<button class="practice-button explanation-button" id="quiz-explanation">Explanation</button>':'<button class="quiz-skip" id="quiz-skip">Don’t know?</button>')+'</div>';
 }
 
-if(q.type==='calculation'){html+='<label class="sr-only" for="number-answer">Your numeric answer</label><div class="numeric-row"><input class="field" id="number-answer" inputmode="decimal" placeholder="Your numeric answer" value="'+esc(a.value||'')+'" '+(a.submitted?'disabled':'')+'><div class="numeric-actions"><button class="primary practice-button" id="check" '+(a.submitted?'disabled':'')+'>Check</button>'+(a.submitted?'<details id="calculation-solution" class="calculation-solution"><summary class="practice-button explanation-button">Explanation</summary><div id="calculation-solution-panel" class="calculation-solution-panel" role="region" aria-label="Worked solution" tabindex="0">'+feedbackHtml(q,a)+sourceHtml(q)+'</div></details>':'')+'</div></div><div id="answer-message" role="alert" class="tiny"></div><details class="hint"><summary>Need a starting point?</summary><p>Substitute given values into the relevant formula.</p></details>';}
+if(q.type==='calculation'){html=html.replace('<span>Calculation</span>', '<span class="calculation-meta-actions">Calculation<button id="quiz-sound" class="quiz-sound" aria-label="'+(answerSoundEnabled?'Mute sounds':'Enable sounds')+'" aria-pressed="'+answerSoundEnabled+'" title="'+(answerSoundEnabled?'Sounds on':'Sounds off')+'">'+flashIcon(answerSoundEnabled?'volume-2':'volume-x')+'</button></span>');html+='<label class="sr-only" for="number-answer">Your numeric answer</label><div class="numeric-row"><div id="numeric-answer-field" class="numeric-answer-field '+(a.submitted?(a.correct?'is-correct':'is-wrong'):'')+'"><input class="field" id="number-answer" inputmode="decimal" enterkeyhint="done" placeholder="Type answer and press Enter" aria-invalid="'+Boolean(a.submitted&&!a.correct)+'" value="'+esc(a.value||'')+'" '+(a.submitted&&a.correct?'disabled':'')+'>'+(a.submitted?'<span class="numeric-answer-state" role="status">'+flashIcon(a.correct?'check':'x')+'<span class="sr-only">'+(a.correct?'Correct answer':'Incorrect answer')+'</span></span>':'')+'</div><div class="numeric-actions">'+(a.submitted?'<details id="calculation-solution" class="calculation-solution"><summary class="practice-button explanation-button">Explanation</summary><div id="calculation-solution-panel" class="calculation-solution-panel" role="region" aria-label="Worked solution" tabindex="0">'+feedbackHtml(q,a)+sourceHtml(q)+'</div></details>':'')+'</div></div><div id="answer-message" role="alert" class="tiny"></div><details class="hint"><summary>Need a starting point?</summary><p>Substitute given values into the relevant formula.</p></details>';}
 if(q.type==='flashcard'){
   const origin=q.originQuizId||quiz.id,eligible=Boolean(origin&&(quiz.mode==='generated'||quiz.mode==='bank'));
   const starred=typeof isQuestionStarred==='function'?isQuestionStarred(q):Boolean(q.starred);
@@ -154,7 +171,7 @@ $('#previous').innerHTML=flashIcon('arrow-left')+(q.type==='flashcard'?'Back':'P
 $('#next').innerHTML=(q.type==='flashcard'?'Continue':'Next')+flashIcon('arrow-right');$('#next').title=index===quiz.questions.length-1?'View results':'Next question';
 $('#flash-position').hidden=q.type!=='flashcard';$('#flash-position').textContent=(index+1)+' / '+quiz.questions.length;
 
-$('#question').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>submitChoice(Number(b.dataset.answer)));if($('#quiz-explanation'))$('#quiz-explanation').onclick=openQuizExplanation;if($('#quiz-skip'))$('#quiz-skip').onclick=()=>submitChoice(null,true);if($('#quiz-sound'))$('#quiz-sound').onclick=()=>{setAnswerSound(!answerSoundEnabled);render();$('#quiz-sound').focus();};if($('#check'))$('#check').onclick=()=>{if(q.type==='mcq')answers[q.id]={...a,submitted:true,correct:a.selected===q.correctIndex};else{const value=$('#number-answer').value.trim();const result=gradeNumeric(value,q.numericAnswer,q.tolerance);if(result===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}answers[q.id]={value,submitted:true,correct:result};}render();};document.querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));scheduleSave();if($('#number-answer'))$('#number-answer').oninput=e=>{answers[q.id]={...answers[q.id],value:e.target.value};scheduleSave();};if($('#number-answer'))$('#number-answer').onkeydown=e=>{if(e.key==='Enter')$('#check')?.click();};if($('#flash-flip'))$('#flash-flip').onclick=()=>{answers[q.id]={...answers[q.id],reviewed:true,revealed:!answers[q.id]?.revealed};render();$('#flash-flip').focus();};if($('#flash-hint'))$('#flash-hint').onclick=()=>requestFlashcardHint(q);if($('#flash-star'))$('#flash-star').onclick=()=>toggleQuestionStar(q);fitQuizStage();}
+$('#question').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>submitChoice(Number(b.dataset.answer)));if($('#quiz-explanation'))$('#quiz-explanation').onclick=openQuizExplanation;if($('#quiz-skip'))$('#quiz-skip').onclick=()=>submitChoice(null,true);if($('#quiz-sound'))$('#quiz-sound').onclick=()=>{setAnswerSound(!answerSoundEnabled);render();$('#quiz-sound').focus();};document.querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));scheduleSave();if($('#number-answer'))$('#number-answer').oninput=e=>{answers[q.id]={...answers[q.id],value:e.target.value};scheduleSave();};if($('#number-answer'))$('#number-answer').onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing&&!e.repeat){e.preventDefault();submitCalculation();}};if($('#flash-flip'))$('#flash-flip').onclick=()=>{answers[q.id]={...answers[q.id],reviewed:true,revealed:!answers[q.id]?.revealed};render();$('#flash-flip').focus();};if($('#flash-hint'))$('#flash-hint').onclick=()=>requestFlashcardHint(q);if($('#flash-star'))$('#flash-star').onclick=()=>toggleQuestionStar(q);fitQuizStage();}
 function sampleSheet(){
   return {title:'Gradient descent',format:'cheatsheet',mode:'sample',questions:[],sections:samples.flashcard.map((q,i)=>({id:'s'+i,heading:q.prompt,points:[q.answer],formulas:[],source:q.source}))};
 }
@@ -166,7 +183,22 @@ function renderCheatSheet(){
   $('#sheet-sections').querySelectorAll('.source-open').forEach(b=>b.onclick=()=>openSource(b.dataset.source));
   saveSnapshot();
 }
-$('#sheet-export').onclick=()=>exportQuiz();$('#sheet-print').onclick=()=>window.print();
+async function downloadCheatSheet(type){
+  if(quiz?.format!=='cheatsheet')return;
+  const button=$(type==='pdf'?'#sheet-print':'#sheet-export');
+  if(button.disabled)return;
+  const sheet={title:quiz.title,description:quiz.description,sections:quiz.sections};
+  button.disabled=true;
+  try{
+    const response=await fetch('/api/cheatsheets/export?format='+type,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(sheet)});
+    if(!response.ok){const error=await response.json();throw Error(error.detail||error.error||'Export failed. Try again.');}
+    const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
+    link.href=url;link.download='lecture-lab-study-guide.'+type;link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){message(error.message,true);}finally{button.disabled=false;}
+}
+$('#sheet-export').onclick=()=>downloadCheatSheet('html');$('#sheet-print').onclick=()=>downloadCheatSheet('pdf');
 function gradeNumeric(value,expected,tolerance){if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value))return null;const n=Number(value);return Number.isFinite(n)?Math.abs(n-expected)<=tolerance+Number.EPSILON*Math.max(1,Math.abs(expected)):null;}
 function hideFlashcardAnswer(){
   const q=quiz?.questions?.[index],a=q&&answers[q.id];
@@ -214,9 +246,9 @@ function showSummary(){
 function exportQuiz(){if(!quiz)return;const payload={title:quiz.title,description:quiz.description,format:quiz.format,mode:quiz.mode,questions:quiz.questions,...(quiz.format==='cheatsheet'?{sections:quiz.sections}:{})};const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=quiz.format==='cheatsheet'?'lecture-lab-cheatsheet.json':'lecture-lab-quiz.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function validateImported(q){if(q?.format==='cheatsheet')return validateImportedSheet(q);if(!q||typeof q.title!=='string'||q.title.length>180||!Array.isArray(q.questions)||q.questions.length<1||q.questions.length>(q.mode==='bank'?500:12))throw Error('Choose a Lecture Lab quiz with 1–12 questions.');const ids=new Set();for(const x of q.questions){if(!x||!['mcq','flashcard','calculation'].includes(x.type)||typeof x.id!=='string'||ids.has(x.id)||typeof x.prompt!=='string'||typeof x.answer!=='string'||typeof x.explanation!=='string'||!x.source||!['name','locator','quote'].every(k=>typeof x.source[k]==='string')||!Array.isArray(x.steps)||!x.steps.every(y=>typeof y==='string'))throw Error('The quiz has missing or invalid question fields.');ids.add(x.id);if(x.type==='mcq'&&(!Array.isArray(x.options)||x.options.length<2||x.options.length>6||!x.options.every(y=>typeof y==='string')||!Number.isInteger(x.correctIndex)||x.correctIndex<0||x.correctIndex>=x.options.length))throw Error('A multiple-choice question has invalid options.');if(x.type==='calculation'&&(!Number.isFinite(x.numericAnswer)||!Number.isFinite(x.tolerance)||x.tolerance<0||x.tolerance>1))throw Error('A calculation question has an invalid numeric answer or tolerance.');}return q;}
 function validateImportedSheet(q){
-  if(typeof q.title!=='string'||!q.title.trim()||q.title.length>180||!Array.isArray(q.sections)||q.sections.length<1||q.sections.length>12)throw Error('Choose a valid Lecture Lab cheat sheet.');
+  if(typeof q.title!=='string'||!q.title.trim()||q.title.length>180||!Array.isArray(q.sections)||q.sections.length<1||q.sections.length>2048)throw Error('Choose a valid Lecture Lab cheat sheet.');
   const ids=new Set();for(const s of q.sections){
-    if(!s||typeof s.id!=='string'||ids.has(s.id)||typeof s.heading!=='string'||!s.heading.trim()||s.heading.length>120||!Array.isArray(s.points)||s.points.length<1||s.points.length>5||!Array.isArray(s.formulas)||s.formulas.length>3||![...s.points,...s.formulas].every(t=>typeof t==='string'&&t.trim()&&t.length<=1000)||!s.source||!['name','locator','quote'].every(k=>typeof s.source[k]==='string'))throw Error('The cheat sheet has invalid sections or sources.');
+    if(!s||typeof s.id!=='string'||ids.has(s.id)||typeof s.heading!=='string'||!s.heading.trim()||s.heading.length>120||!Array.isArray(s.points)||!Array.isArray(s.formulas)||s.points.length+s.formulas.length<1||s.points.length+s.formulas.length>120||![...s.points,...s.formulas].every(t=>typeof t==='string'&&t.trim()&&t.length<=6000)||!s.source||!['name','locator','quote'].every(k=>typeof s.source[k]==='string'))throw Error('The cheat sheet has invalid sections or sources.');
     ids.add(s.id);
   }return {...q,questions:[]};
 }

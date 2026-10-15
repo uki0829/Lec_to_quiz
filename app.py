@@ -15,7 +15,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+from sheet_documents import render_html, render_pdf, validate_document
+from study_agent import StudyAgent
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ai import AI
@@ -66,10 +69,12 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
     accounts = Accounts(store)
     groups = Groups(store, accounts)
     mutation_lock = threading.RLock()
+    study_agent = StudyAgent(store, engine)
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
         store.recover_interrupted_jobs()
+        study_agent.recover()
         if run_jobs:
             engine.retriever.cleanup()
             if not isinstance(engine.ai, AI) or os.getenv('OPENAI_API_KEY'):
@@ -258,6 +263,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                     db.execute('DELETE FROM requests WHERE job_id=?', (jid,))
                     db.execute('DELETE FROM jobs WHERE id=?', (jid,))
                 db.execute('DELETE FROM requests WHERE collection_id=?', (cid,))
+                db.execute('DELETE FROM agent_messages WHERE thread_id IN (SELECT id FROM agent_threads WHERE collection_id=?)', (cid,))
+                db.execute('DELETE FROM agent_threads WHERE collection_id=?', (cid,))
                 db.execute('DELETE FROM collection_owners WHERE collection_id=?', (cid,))
                 db.execute('DELETE FROM collections WHERE id=?', (cid,))
             for mid in mids:
@@ -470,6 +477,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             resolved['submitted'] = params.model_dump(exclude_none=True)
             return dispatch('quiz', mids[0], resolved)
 
+    study_agent.routes(app, lambda params: generate(QuizRequest(**params)), retry_job, require_collection, mutation_lock)
+
     @app.get("/api/quizzes")
     def quizzes(collectionId: str | None = None):
         values = (collectionId,) if collectionId else ()
@@ -600,6 +609,27 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             cached = store.one('SELECT hint FROM question_hints WHERE quiz_id=? AND question_id=?',
                                (quiz_id, question_id))
         return {'hint': cached['hint'], 'cached': False}
+
+    @app.post('/api/cheatsheets/export')
+    async def export_sheet(request: Request, format: str = 'html'):
+        if format not in ('html', 'pdf'):
+            raise HTTPException(400, 'Choose HTML or PDF.')
+        payload = bytearray()
+        async for chunk in request.stream():
+            payload.extend(chunk)
+            if len(payload) > 4*1024*1024:
+                raise HTTPException(413, 'The guide is too large to export.')
+        try:
+            sheet = validate_document(json.loads(payload))
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc) if isinstance(exc, ValueError) else 'Invalid guide.') from exc
+        try:
+            html = await run_in_threadpool(render_html, sheet)
+            content = await run_in_threadpool(render_pdf, html) if format == 'pdf' else html
+        except ValueError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return Response(content, media_type='application/pdf' if format == 'pdf' else 'text/html',
+            headers={'Content-Disposition': f'attachment; filename="lecture-lab-study-guide.{format}"'})
 
     @app.put("/api/quizzes/{quiz_id}/progress")
     async def progress(quiz_id: str, request: Request):

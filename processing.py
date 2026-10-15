@@ -1,5 +1,6 @@
 """Bounded local media preparation and resumable background jobs."""
 import concurrent.futures
+import hashlib
 import json
 import math
 import os
@@ -259,7 +260,86 @@ class Engine:
                 batch = []
         self.extract_batch(job_id, material_id, batch)
 
+    def process_sheet(self, job_id, material_id, params):
+        """Visit the entire ready snapshot in bounded batches instead of top-k search."""
+        cid = params.get('collectionId') or self.store.collection_for(material_id)
+        sources = self.retriever.coverage(cid, params.get('materialSnapshot') or [material_id])
+        if not sources:
+            return {'status': 'insufficient_source', 'message': 'No processed lecture content is available.'}
+        batches = [sources[i:i+10] for i in range(0, len(sources), 10)]
+        self.store.execute('UPDATE requests SET snapshot=? WHERE job_id=?',
+            (json.dumps([{'chunkId': s['id'], 'sourceId': s['originalSourceId'], 'materialId': s['materialId']}
+                         for s in sources]), job_id))
+        request = self.store.one('SELECT resolved FROM requests WHERE job_id=?', (job_id,))
+        if request:
+            resolved = json.loads(request['resolved'])
+            self.store.execute('UPDATE requests SET resolved=? WHERE job_id=?',
+                (json.dumps({**resolved, 'coverageMode': 'whole_lecture', 'coverageBatchCount': len(batches)}), job_id))
+        checkpoint = params.get('sheetCheckpoint', [])
+        completed = {entry['signature']: entry['raw'] for entry in checkpoint}
+        sections, headings, fingerprints = [], set(), set()
+        title, description = '', ''
+        for number, batch in enumerate(batches):
+            self.check(job_id)
+            self.stage(job_id, f'Reading lecture coverage {number+1} of {len(batches)}', number, len(batches))
+            signature = hashlib.sha256(json.dumps({'sources': [s['id'] for s in batch],
+                'prompt': params['prompt'], 'model': self.ai.model}).encode()).hexdigest()
+            feedback = ''
+            for attempt in range(2):
+                self.check(job_id)
+                raw = completed.get(signature)
+                if raw is None:
+                    raw = self.ai.generate({**params, 'coverageBatch': {'number': number+1,
+                        'total': len(batches), 'previousHeadings': sorted(headings)[-80:]}}, batch, feedback)
+                self.check(job_id)
+                try:
+                    result = validate_quiz(raw, batch, 'cheatsheet', params['count'])
+                    break
+                except ValueError as exc:
+                    completed.pop(signature, None)
+                    if attempt:
+                        raise ValueError('The generated guide failed validation: ' + str(exc)) from exc
+                    feedback = json.dumps({'error': str(exc), 'previousAttempt': raw,
+                        'instruction': 'Repair the invalid content or source references. Choose the useful '
+                        'number of sections, points, and formulas; there is no legacy section-count quota.'})
+            if result['status'] != 'ready':
+                return {'status': result['status'], 'message': result['message']}
+            if signature not in completed:
+                checkpoint = [entry for entry in checkpoint if entry['signature'] != signature]
+                checkpoint.append({'signature': signature, 'raw': raw})
+                completed[signature] = raw
+                params = {**params, 'sheetCheckpoint': checkpoint}
+                self.store.execute('UPDATE jobs SET params=? WHERE id=?', (json.dumps(params), job_id))
+            title = title or result['title']
+            description = description or result['description']
+            for section in result['sections']:
+                fingerprint = normalize(json.dumps([section['heading'], section['points'], section['formulas']]))
+                if fingerprint in fingerprints:
+                    continue
+                fingerprints.add(fingerprint)
+                heading, suffix = section['heading'], 1
+                while normalize(heading) in headings:
+                    suffix += 1
+                    heading = section['heading'][:98] + f' (continued {suffix})'
+                headings.add(normalize(heading))
+                sections.append({**section, 'heading': heading, 'id': 's'+str(len(sections))})
+        self.check(job_id)
+        sheet = {'status': 'ready', 'message': '', 'title': title,
+                 'description': description if len(batches) == 1 else '',
+                 'format': 'cheatsheet', 'questions': [], 'sections': sections,
+                 'coverage': {'mode': 'whole_lecture', 'chunkCount': len(sources),
+                              'sourceCount': len({s['originalSourceId'] for s in sources}),
+                              'materialCount': len({s['materialId'] for s in sources})}}
+        sheet = self.store.add_quiz(material_id, sheet)
+        with self.store.connect() as db:
+            db.execute('UPDATE requests SET quiz_id=? WHERE job_id=?', (sheet['id'], job_id))
+            db.executemany('INSERT OR IGNORE INTO quiz_sources VALUES(?,?)',
+                           [(sheet['id'], s['source']['id']) for s in sections])
+        return {'status': 'ready', 'quizId': sheet['id']}
+
     def process_quiz(self, job_id, material_id, params):
+        if params['format'] == 'cheatsheet':
+            return self.process_sheet(job_id, material_id, params)
         self.stage(job_id, "Searching your study collection", 0, 4)
         cid = params.get('collectionId') or self.store.collection_for(material_id)
         mids = params.get('materialSnapshot') or [material_id]

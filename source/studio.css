@@ -359,14 +359,26 @@
 /* Calculation explanations open over the card without moving navigation. */
 #question[data-type=calculation]{position:relative;overflow:auto}
 #question[data-type=calculation] .numeric-row{max-width:760px;align-items:flex-start}
+.calculation-meta-actions{display:flex;align-items:center;gap:12px}
+.numeric-answer-field{position:relative;flex:1;min-width:0;width:100%}
+.numeric-answer-field .field{padding-right:48px;transition:border-color .18s,background-color .18s}
+.numeric-answer-field.is-correct .field{border-color:#64c59d;background:#213f38;color:#d3f5e5;opacity:1}
+.numeric-answer-field.is-wrong .field{border-color:#db859e;background:#422d3c;color:#ffe0e8;opacity:1}
+.numeric-answer-state{position:absolute;right:15px;top:50%;transform:translateY(-50%);display:flex;pointer-events:none}
+.numeric-answer-state .icon{width:22px;height:22px}
+.numeric-answer-field.is-correct .numeric-answer-state .icon{filter:invert(77%) sepia(20%) saturate(846%) hue-rotate(105deg) brightness(92%) contrast(86%)}
+.numeric-answer-field.is-wrong .numeric-answer-state .icon{filter:invert(72%) sepia(22%) saturate(841%) hue-rotate(294deg) brightness(94%) contrast(87%)}
 .numeric-actions{display:flex;gap:10px;align-items:center;flex-shrink:0}
 .calculation-solution>summary{list-style:none;display:flex;align-items:center;justify-content:center;min-height:46px;white-space:nowrap;border:1px solid #596b87;border-radius:10px;padding:12px 17px;background:#2c3a50;font-weight:700;cursor:pointer}
 .calculation-solution>summary::-webkit-details-marker{display:none}
 .calculation-solution>summary:focus-visible{outline:3px solid #add6ff;outline-offset:3px}
 .calculation-solution[open]>summary{background:#3b4761;border-color:#a9cbff}
-.calculation-solution-panel{position:absolute;z-index:5;bottom:18px;left:18px;right:18px;max-height:min(48%,360px);overflow:auto;padding:16px;background:#222d40;border:1px solid #6a7893;border-radius:14px;box-shadow:0 12px 40px #0009;cursor:pointer}
-.calculation-solution-panel .feedback{margin-top:0}
-.calculation-solution-panel .source-ref{margin-top:14px}
+.calculation-solution-panel{position:absolute;z-index:5;bottom:18px;left:18px;right:18px;max-height:min(48%,360px);overflow:auto;padding:16px;background:#fff;color:#293348;border:1px solid #dce2ee;border-radius:14px;box-shadow:0 12px 40px #0005;cursor:pointer;color-scheme:light}
+.calculation-solution-panel .feedback{margin-top:0;background:transparent;border:0;color:#293348}
+.calculation-solution-panel .source-ref{margin-top:14px;color:#52607b;border-color:#dce2ee}
+.calculation-solution-panel .source-ref blockquote{background:#f2f5fb;color:#293348}
+.calculation-solution-panel .source-open{color:#4444b6}
+.calculation-solution-panel .source-open:hover:not(:disabled){background:#eef0fb}
 @media(max-width:580px){.numeric-actions{width:100%;flex-wrap:wrap}.calculation-solution-panel{left:10px;right:10px;bottom:10px;padding:10px;max-height:52%}.calculation-solution>summary{min-height:40px;padding:9px 13px}}
 
 /* One control size and type treatment across every practice format. */
@@ -411,3 +423,41 @@
   .app-header{gap:12px}.sidebar-toggle{width:32px;padding:5px}.brand{gap:8px}
 }
 @media(max-width:580px){.app-header{padding:0 12px;gap:8px}.sidebar-toggle{width:28px}.brand{font-size:18px}.account-name{max-width:68px;font-size:10px}.brandmark{width:32px;height:32px}}
+
+/* Study guides use a continuous reading layout with typeset equations. */
+.cheatsheet{max-width:920px}.sheet-sections{grid-template-columns:minmax(0,1fr)}
+.sheet-section{background:#fff;color:#293348;border-top:3px solid #8977c8;padding:28px 32px}
+.sheet-section h3{color:#293348;font-size:20px}.sheet-section ul{font-size:15px;line-height:1.85}
+.sheet-formula{background:#f2f4fa;border-left-color:#8977c8;color:#293348;font-family:inherit}
+.sheet-formula .katex-display{overflow-x:auto;overflow-y:hidden;padding:3px 0}
+.sheet-section .source-ref{border-color:#dce2ee;color:#52607b}.sheet-section .source-ref blockquote{background:#f2f4fa}
+@media(max-width:600px){.sheet-section{padding:21px 18px}.sheet-heading{padding-right:0}.sheet-actions{position:static;margin-top:16px}}
+
+.sheet-contents{margin:0 0 20px;padding:13px 16px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:14px;font-weight:650}.sheet-contents .sheet-nav{margin:14px 0 0}
+
+/* Conversational practice keeps the selected lecture folder visible. */
+.main-content:has(.groups-view:not([hidden]),.agent-view:not([hidden])){margin-block:0}
+.agent-view,.groups-view{max-width:960px;margin:0 auto}
+.agent-view{max-width:960px;margin:0 auto;height:calc(100dvh - 170px);min-height:540px;display:flex;flex-direction:column;gap:20px}
+.agent-header,.groups-heading{min-height:86px;flex:none;display:flex;justify-content:space-between;align-items:center;gap:24px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.agent-header>div:first-child,.groups-title{display:flex;align-items:center;gap:12px}.agent-header h1,.groups-heading h1{font-size:28px;letter-spacing:-.7px;margin:0}
+.groups-heading{margin-bottom:0}.groups-description{margin:18px 0 24px;color:var(--muted);font-size:14px}
+.agent-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#423968}.agent-mark .icon{width:24px;height:24px}
+.agent-folder{min-width:210px;max-width:320px;flex:1}.agent-folder>label{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+.agent-empty{text-align:center;padding:48px 20px 24px;margin:auto 0}.agent-orbit{display:inline-grid;place-items:center;width:76px;height:76px;background:#302c4b;border:1px solid #685e9d;border-radius:26px;transform:rotate(-7deg);margin-bottom:25px}.agent-orbit .icon{width:34px;height:34px;transform:rotate(7deg)}
+.agent-empty h2{font-size:30px;letter-spacing:-.7px;line-height:1.3;margin:0 0 12px}.agent-empty p{font-size:15px;color:var(--muted);margin:0 0 26px}
+.agent-suggestions{display:flex;justify-content:center;flex-wrap:wrap;gap:10px}.agent-suggestions button{font-size:13px;background:#252e40;border:1px solid #495472;color:#d6dbef;padding:11px 15px}
+.agent-messages{display:flex;flex-direction:column;flex:1;gap:25px;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:4px 7px}
+.agent-messages:empty{display:none}.agent-message{max-width:88%;font-size:15px;line-height:1.8;overflow-wrap:anywhere}.agent-message p{margin:6px 0 12px;white-space:pre-wrap}
+.agent-speaker{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;font-weight:700}.agent-speaker .icon{width:16px;height:16px}
+.agent-message.from-user{align-self:flex-end;background:#293b58;border:1px solid #415b82;border-radius:17px 17px 4px 17px;padding:13px 19px}.agent-message.from-user p{margin-bottom:0}.agent-message.from-user .agent-speaker{color:#b7d7ff}
+.agent-message.from-agent{align-self:flex-start;width:100%}.agent-message.is-pending>p{color:#d0c6ff}
+.agent-result{background:var(--panel);border:1px solid #675b94;border-left:3px solid #aa96f2;border-radius:13px;padding:20px 23px;margin-top:13px;max-width:680px}
+.agent-result-kind{display:flex;align-items:center;gap:7px;font-size:12px;color:#c3b7ec}.agent-result-kind .icon{width:17px;height:17px}.agent-result h2{font-size:21px;line-height:1.4;margin:12px 0 18px;overflow-wrap:anywhere}.agent-result>.primary{font-size:14px;min-height:44px}
+.agent-sources{margin-top:18px;color:var(--muted);font-size:12px}.agent-sources>summary{padding:7px 0}.agent-source{display:flex;width:100%;justify-content:flex-start;text-align:left;font-size:12px;line-height:1.5;background:transparent;border-top:1px solid var(--line);border-radius:0;padding:10px 0;color:var(--ink)}.agent-source span{min-width:0;overflow-wrap:anywhere}.agent-source small{display:block;color:var(--muted);font-size:11px}.agent-source .icon{width:17px;height:17px}
+.agent-composer{flex:none;margin-top:auto;background:var(--panel);border:1px solid #636084;border-radius:18px;padding:17px 19px;box-shadow:0 12px 35px #0002}.agent-composer:focus-within{border-color:#b5a4f1;box-shadow:0 0 0 2px #aa96f221}.agent-composer textarea{display:block;width:100%;min-height:70px;max-height:180px;resize:vertical;border:0;background:transparent;color:var(--ink);font-size:16px;line-height:1.7;padding:0;outline:none}.agent-composer textarea::placeholder{color:#a8b4cc}.agent-composer textarea:focus-visible{outline:none}
+.agent-composer-actions{display:flex;align-items:center;gap:12px;margin-top:14px}.agent-composer-actions .primary{margin-left:auto;min-height:44px;font-size:14px}.agent-composer-actions .quiet{font-size:13px;padding-left:0}.agent-ready{font-size:12px;color:var(--muted)}.agent-error{font-size:13px;color:#ffbdce;line-height:1.7;margin:0}.agent-error:empty{display:none}
+#authenticated-app:has(#agent-view:not([hidden])) #job-panel{display:none}
+@media(max-width:700px){.agent-view{height:calc(100dvh - 135px);min-height:480px;gap:16px}.agent-header{align-items:flex-start;gap:15px;flex-wrap:wrap}.agent-header h1,.groups-heading h1{font-size:25px}.agent-folder{max-width:none;min-width:0;width:100%;flex-basis:100%}.agent-empty{padding:28px 5px 15px}.agent-empty h2{font-size:25px}.agent-message{max-width:96%}.agent-result{padding:17px}.agent-ready{display:none}.agent-composer{padding:14px}.agent-composer textarea{font-size:16px}}
+
+@media(max-width:700px){.groups-heading{align-items:flex-start;gap:15px;flex-wrap:wrap}.groups-heading>div:last-child{flex-wrap:wrap;justify-content:flex-start}.groups-description{margin-top:16px}}

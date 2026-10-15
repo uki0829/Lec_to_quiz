@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bash scripts/start.sh",
-    "test": ".venv/bin/python -m pytest -q && node scripts/check_frontend.mjs && node scripts/check_creator.mjs && node scripts/check_social.mjs && node scripts/check_math.mjs && node scripts/check_practice.mjs && node scripts/check_set_actions.mjs",
-    "check": "node --check source/app.js && node --check source/local.js && node --check source/social.js && node --check source/math.js && node --check source/practice.js && node --check source/set-actions.js && node --check source/sidebar.js && node --check source/set-drag.js"
+    "test": ".venv/bin/python -m pytest -q && node scripts/check_frontend.mjs && node scripts/check_creator.mjs && node scripts/check_social.mjs && node scripts/check_math.mjs && node scripts/check_practice.mjs && node scripts/check_set_actions.mjs && node scripts/check_agent.mjs",
+    "check": "node --check source/app.js && node --check source/local.js && node --check source/social.js && node --check source/math.js && node --check source/practice.js && node --check source/set-actions.js && node --check source/sidebar.js && node --check source/set-drag.js && node --check source/agent.js"
   },
   "dependencies": {
     "katex": "0.19.0"

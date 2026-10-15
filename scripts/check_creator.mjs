@@ -82,7 +82,7 @@ console.log('Cancellation and refresh restoration checks passed.');
 
 // New reference format has sections and no irrelevant difficulty control.
 run("format='cheatsheet';updateComposerState()");
-assert.equal(document.querySelector('#count-label').textContent,'Sections');
+assert.equal(document.querySelector('#count-field').hidden,true);
 assert.equal(document.querySelector('#difficulty-field').hidden,true);
 assert.equal(document.querySelector('#generate').textContent,'Create cheat sheet');
 run("savedSets=[{id:'sheet',title:'Gradient reference',format:'cheatsheet',sectionCount:4,questionCount:0},{id:'quiz',title:'Gradient quiz',format:'mcq',questionCount:6}];$('#search-sets').value='';$('#set-format-filter').value='cheatsheet';renderQuizGrid()");

@@ -34,6 +34,16 @@ class Selection(StrictModel):
     sourceIds: list[str]
 
 
+class AgentPlan(StrictModel):
+    action: Literal['generate', 'clarify']
+    message: str
+    prompt: str
+    format: Literal['mcq', 'flashcard', 'calculation', 'cheatsheet'] | None
+    count: Literal[4, 6, 8, 10] | None
+    difficulty: Literal['beginner', 'intermediate', 'advanced'] | None
+    buildOnPrevious: bool
+
+
 class GeneratedQuestion(StrictModel):
     id: str
     type: Literal["mcq", "flashcard", "calculation"]
@@ -233,17 +243,19 @@ def validate_cheatsheet(raw, sources, count):
         return data
     if not data['title'].strip() or len(data['title']) > 180:
         raise ValueError('The cheat sheet needs a short title')
-    if len(data['sections']) != count:
-        raise ValueError(f"The model returned {len(data['sections'])} sections instead of {count}")
+    if not 1 <= len(data['sections']) <= 80:
+        raise ValueError('The guide needs content; split very large guides into coverage batches')
     headings = set()
     for i, section in enumerate(data['sections']):
         heading = normalize(section['heading'])
         if not heading or heading in headings or len(section['heading']) > 120:
             raise ValueError('Cheat sheet headings must be short and distinct')
         headings.add(heading)
-        if not 1 <= len(section['points']) <= 5 or len(section['formulas']) > 3:
-            raise ValueError('Each section needs 1–5 key points and at most 3 formulas')
-        if any(not t.strip() or len(t) > 1000 for t in section['points'] + section['formulas']):
+        if not section['points'] and not section['formulas']:
+            raise ValueError('Each section needs explanatory content or formulas')
+        if len(section['points']) + len(section['formulas']) > 120:
+            raise ValueError('Split an oversized section into clear topics')
+        if any(not t.strip() or len(t) > 6000 for t in section['points'] + section['formulas']):
             raise ValueError('Cheat sheet content is empty or too long')
         section['id'] = 's' + str(i)
         section['source'] = resolve_source(section, sources)

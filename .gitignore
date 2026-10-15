@@ -9,3 +9,6 @@ __pycache__/
 playwright-report/
 
 node_modules/
+
+output/
+tmp/pdfs/

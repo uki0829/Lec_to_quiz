@@ -112,6 +112,21 @@ class Retriever:
     def snapshot(self, cid):
         return [r['id'] for r in self.store.collection_materials(cid) if self.is_ready(r['id'])]
 
+    def coverage(self, cid, material_ids):
+        """All eligible chunks in lecture order, for whole-document study guides."""
+        if not material_ids:
+            return []
+        marks = ','.join('?' for _ in material_ids)
+        rows = self.store.all(
+            'SELECT c.body FROM chunks c JOIN sources s ON s.id=c.source_id '
+            'JOIN materials m ON m.id=c.material_id WHERE c.collection_id=? AND c.model=? '
+            f"AND c.indexed=1 AND m.status='ready' AND c.material_id IN ({marks}) "
+            "ORDER BY m.created, json_extract(s.body,'$.fileId'), "
+            "COALESCE(json_extract(s.body,'$.page'),json_extract(s.body,'$.start'),0), "
+            "s.unit_key, json_extract(c.body,'$.textStart')",
+            (cid, self.model, *material_ids))
+        return [json.loads(r['body']) for r in rows]
+
     def search(self, cid, material_ids, query, check=lambda: None):
         # Limit vectors by exact IDs from SQLite, not just potentially stale metadata.
         if not material_ids:

@@ -13,3 +13,4 @@ tiktoken==0.14.0
 
 google-auth==2.62.0
 requests==2.34.2
+playwright==1.64.0

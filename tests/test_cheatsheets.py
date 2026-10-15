@@ -23,6 +23,9 @@ class SheetAI(FakeAI):
             return super().generate(params, sources, validation_feedback)
         if self.fail_generate:
             raise ValueError('Fixture quota exhausted')
+        if self.absent:
+            return {'status': 'insufficient_source', 'message': 'This topic is absent.',
+                    'title': '', 'description': '', 'sections': []}
         self.generate_calls += 1
         return {'status': 'ready', 'message': '', 'title': 'Gradient descent reference', 'description': '',
                 'sections': [{'heading': 'Concept ' + str(i + 1), 'points': ['Subtract the step from the parameter.'],
@@ -41,7 +44,8 @@ def test_sheet_schema_and_prompt(monkeypatch):
     monkeypatch.setattr(ai, 'structured', structured)
     ai.generate({'prompt': 'Gradient descent', 'format': 'cheatsheet', 'count': 4}, [])
     assert captured['schema'] is GeneratedCheatSheet is generation_schema('cheatsheet')
-    assert 'authoritative' in captured['system']
+    assert 'comprehensive' in captured['system']
+    assert 'NOT a section quota' in captured['system']
     assert 'never evidence' in captured['system']
 
 
@@ -64,14 +68,18 @@ def test_sheet_validation_rejects_unsupported_evidence():
         validate_cheatsheet(invalid, [source], 4)
     invalid = copy.deepcopy(raw)
     invalid['sections'][0]['points'] = []
-    with pytest.raises(ValueError, match='key points'):
+    invalid['sections'][0]['formulas'] = []
+    with pytest.raises(ValueError, match='explanatory content'):
         validate_cheatsheet(invalid, [source], 4)
     invalid = copy.deepcopy(raw)
     invalid['sections'][1]['heading'] = invalid['sections'][0]['heading']
     with pytest.raises(ValueError, match='distinct'):
         validate_cheatsheet(invalid, [source], 4)
-    with pytest.raises(ValueError, match='instead of'):
-        validate_cheatsheet(raw, [source], 6)
+    assert len(validate_cheatsheet(raw, [source], 6)['sections']) == 4
+    expanded = copy.deepcopy(raw)
+    expanded['sections'][0]['points'] *= 8
+    expanded['sections'][0]['formulas'] *= 5
+    assert len(validate_cheatsheet(expanded, [source], 6)['sections'][0]['points']) == 8
 
 
 def test_pdf_sheet_saved_sources_followup_and_failures(tmp_path):
@@ -166,3 +174,54 @@ def test_sheet_collection_growth_isolation_and_dependencies(tmp_path):
         client.delete('/api/materials/' + mids[1])
         assert client.get('/api/quizzes/' + sheet['id']).status_code == 404
         assert store.material(mids[0]) is not None
+
+
+def test_whole_lecture_coverage_and_resumable_batches(tmp_path):
+    class CoverageAI(SheetAI):
+        def __init__(self):
+            super().__init__()
+            self.visited = []
+            self.fail_batch = 2
+
+        def select(self, *args):
+            raise AssertionError('Whole-lecture guides must not use top-k source selection')
+
+        def generate(self, params, sources, validation_feedback=''):
+            batch = params['coverageBatch']['number']
+            self.visited.append([s['id'] for s in sources])
+            if batch == self.fail_batch:
+                raise ValueError('Temporary generation failure')
+            result = super().generate(params, sources, validation_feedback)
+            for section in result['sections']:
+                section['heading'] += ' batch '+str(batch)
+            return result
+
+    ai = CoverageAI()
+    app = create_app(tmp_path, ai=ai, auth_required=False, run_jobs=False)
+    with TestClient(app) as client:
+        engine, store = app.state.engine, app.state.store
+        c = client.post('/api/collections', json={'name': 'Whole course'}).json()['id']
+        material, _ = complete(client, engine, client.post('/api/materials', data={'collectionId': c, 'notes': NOTES}))
+        mid = material['materialId']
+        for i in range(27):
+            store.save_source(mid, f'page-{i:03}', {'kind': 'pdf', 'name': 'Course.pdf',
+                'page': i+1, 'locator': f'Page {i+1}', 'text': f'Topic {i+1}. '+NOTES, 'summary': '', 'fileId': None})
+        engine.retriever.index(mid)
+        expected = {s['id'] for s in engine.retriever.coverage(c, [mid])}
+        response = client.post('/api/quizzes', json={'collectionId': c, 'format': 'cheatsheet',
+            'count': 4, 'prompt': 'Create a comprehensive lecture guide'}).json()
+        engine.run(response['jobId'])
+        assert store.job(response['jobId'])['status'] == 'failed'
+        assert len(store.job(response['jobId'])['params']['sheetCheckpoint']) == 1
+        first_batch = ai.visited[0]
+        ai.fail_batch = None
+        retried = client.post('/api/jobs/'+response['jobId']+'/retry').json()
+        engine.run(retried['jobId'])
+        job = store.job(retried['jobId'])
+        assert job['status'] == 'completed', job
+        sheet = store.quiz(job['result']['quizId'])
+        assert sheet['coverage']['sourceCount'] == 28
+        assert {x['chunkId'] for x in sheet['request']['snapshot']} == expected
+        assert len(sheet['sections']) == 12  # Model output is not forced to the legacy count of 4.
+        assert sum(batch == first_batch for batch in ai.visited) == 1
+        assert set().union(*(set(batch) for batch in ai.visited)) == expected

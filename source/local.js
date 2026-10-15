@@ -43,7 +43,7 @@ function setBusy(value) {
   $('#job-actions').hidden=!(value||lastFailedJob);$('#cancel-job').hidden=!activeJob;
   if(!value){$('#job-panel').hidden=!activeJob&&!lastFailedJob;if(lastFailedJob){$('#retry-job').hidden=false;$('#edit-failed').hidden=false;}}
   if(value){$('#edit-failed').hidden=true;$('#job-panel').hidden=false;$('#job-panel').classList.remove('failed');}
-  updateComposerState();renderQuestionBank();fitQuizStage();if(typeof updateSetActions==='function')updateSetActions();
+  updateComposerState();renderQuestionBank();fitQuizStage();if(typeof updateSetActions==='function')updateSetActions();if(typeof syncAgentState==='function')syncAgentState();
 }
 async function checkConnection() {
   try {connection=await api('/api/config');}
@@ -136,7 +136,7 @@ async function refreshCollection() {
   filterMaterials();updateComposerState();
 }
 function clearUpload() {attachments=[];$('#notes').value='';$('#composer-notes').value='';materialId=null;materialDirty=true;listFiles();$('#material-summary').innerHTML='';}
-async function selectCollection(id) {collectionId=id||null;parentQuizId=null;parentQuizTitle='';updateFollowup();showView('library');await refreshLibrary();saveSnapshot();}
+async function selectCollection(id) {const agent=currentView==='agent';collectionId=id||null;parentQuizId=null;parentQuizTitle='';updateFollowup();showView(agent?'agent':'library');await refreshLibrary();if(agent&&typeof loadAgentConversation==='function')await loadAgentConversation();saveSnapshot();}
 $('#collection-filter').onchange=$('#saved-materials').onchange=e=>selectCollection(e.target.value).catch(err=>message(err.message,true));
 $('#reset-material').onclick=()=>{if(busy)return;clearUpload();saveSnapshot();message('Upload cleared.');};
 function collectionDialog(action) {collectionAction=action;$('#collection-dialog-title').textContent=action==='rename'?'Rename folder':'New study folder';$('#collection-name').value=action==='rename'?currentCollection?.name||'':'';$('#collection-error').textContent='';$('#collection-dialog').showModal();$('#collection-name').focus();}
@@ -289,7 +289,7 @@ $('#cancel-job').onclick=async()=>{if(!activeJob)return;try{await api('/api/jobs
 $('#retry-job').onclick=async()=>{if(!lastFailedJob||busy)return;
   try {const old=await api('/api/jobs/'+lastFailedJob);const next=['failed','interrupted','cancelled'].includes(old.status)?await api('/api/jobs/'+lastFailedJob+'/retry',{method:'POST'}):{jobId:old.id};
     $('#retry-job').textContent='Retry job';const job=await watchJob(next.jobId);
-    if(job.kind==='quiz'&&job.result?.status==='ready')startQuiz(await api('/api/quizzes/'+job.result.quizId));else if(job.result?.message)message(job.result.message,true);else if(composerMaterialId&&job.material_id===composerMaterialId)await finishComposerMaterial(composerMaterialId);else await loadMaterial(job.material_id);
+    if(job.kind==='quiz'&&job.result?.status==='ready'){if(currentView==='agent'&&typeof loadAgentConversation==='function')await loadAgentConversation();else startQuiz(await api('/api/quizzes/'+job.result.quizId));}else if(job.result?.message)message(job.result.message,true);else if(composerMaterialId&&job.material_id===composerMaterialId)await finishComposerMaterial(composerMaterialId);else await loadMaterial(job.material_id);
   }catch(err){message(err.message,true);}finally{if(!activeJob)setBusy(false);}
 };
 async function openSource(id) {
@@ -318,7 +318,7 @@ function applyToast(text,error){
   for(const id of ['composer-message','upload-message']){const el=$('#'+id);el.className=text?'notice'+(error?' error':''):'';el.textContent=text;}
   if(text&&!error)toastTimer=setTimeout(()=>{for(const id of ['setup-message','composer-message','upload-message'])$('#'+id).textContent='';},7000);
 }
-function showView(view){if(view!=='library'&&typeof endSetDrag==='function')endSetDrag();if(view!=='study'){cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='groups'?'false':'page');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='study')fitQuizStage();}
+function showView(view){if(view!=='library'&&typeof endSetDrag==='function')endSetDrag();if(view!=='study'){cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#agent-view'))$('#agent-view').hidden=view!=='agent';if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='library'?'page':'false');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if($('#nav-agent'))$('#nav-agent').setAttribute('aria-current',view==='agent'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='agent'&&typeof syncAgentState==='function')syncAgentState();if(view==='study')fitQuizStage();}
 function filterMaterials(){
   const search=$('#search-sets').value.trim().toLowerCase();
   const cards=Array.from($('#collection-materials').querySelectorAll('[data-material-title]'));
@@ -409,7 +409,7 @@ function updateComposerState(){
   
   $('#generate').disabled=busy||!options||!eligible||!$('#request').value.trim();
   if(!busy)$('#generate').textContent=generationLabel();
-  $('#count-label').textContent=format==='cheatsheet'?'Sections':'Questions';$('#difficulty-field').hidden=format==='cheatsheet';
+  $('#count-label').textContent='Questions';$('#count-field').hidden=format==='cheatsheet';$('#difficulty-field').hidden=format==='cheatsheet';
   document.querySelectorAll('[data-count]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.count)===count)));
   $('#composer-sources').textContent=ready?ready+' saved lecture'+(ready===1?'':'s')+' ready.':'No ready lectures.';
   $('#composer-retry').hidden=!composerJobId||!lastFailedJob||busy;$('#composer-retry').disabled=busy;
@@ -421,7 +421,7 @@ function updateComposerState(){
 function openComposer(type=null,followup=false){
   if(busy)return;
   if(type)document.querySelector('[data-format="'+type+'"]').click();
-  if(type==='cheatsheet'&&!followup)$('#request').value='Summarize key concepts and formulas.';
+  if(type==='cheatsheet'&&!followup)$('#request').value='Create a comprehensive study guide covering all uploaded lectures. Include clear explanations and relevant formulas.';
   composerMaterialId=null;composerJobId=null;composerLoadedTitle='';composerReady=false;composerStep='upload';
   if(!followup){parentQuizId=null;parentQuizTitle='';updateFollowup();}
   else if(currentCollection?.materials.some(m=>m.searchReady)){composerStep='options';composerReady=true;composerLoadedTitle='Your saved lectures';}
@@ -502,13 +502,13 @@ async function boot() {
       }
       if(state.activeJob){pendingGeneration=state.pendingGeneration;const job=await watchJob(state.activeJob);
         if(['material','index'].includes(job.kind)){if(composerMaterialId&&job.material_id===composerMaterialId)await finishComposerMaterial(composerMaterialId);else if(pendingGeneration)await generateQuiz({...pendingGeneration,collectionId});}
-        else if(job.result?.status==='ready')startQuiz(await api('/api/quizzes/'+job.result.quizId));else if(job.result?.message)message(job.result.message,true);
+        else if(job.result?.status==='ready'){if(currentView!=='agent')startQuiz(await api('/api/quizzes/'+job.result.quizId));}else if(job.result?.message)message(job.result.message,true);
       }
     }
     if(state?.creator?.open&&composerJobId&&!activeJob){const j=await api('/api/jobs/'+composerJobId);if(['failed','cancelled','interrupted'].includes(j.status))lastFailedJob=j.id;else if(j.status==='completed')await finishComposerMaterial(composerMaterialId);}
     updateComposerState();
     if(!activeJob&&currentCollection?.latestQuizJob&&['failed','cancelled','interrupted'].includes(currentCollection.latestQuizJob.status)){lastFailedJob=currentCollection.latestQuizJob.id;const old=await api('/api/jobs/'+lastFailedJob);showJob(old);$('#job-panel').classList.add('failed');$('#job-actions').hidden=false;$('#cancel-job').hidden=true;$('#retry-job').hidden=false;$('#edit-failed').hidden=false;}
-  }catch(err){message(err.message,true);}finally{pendingGeneration=null;if(!activeJob)setBusy(false);if(lastFailedJob){$('#job-actions').hidden=false;$('#retry-job').hidden=false;$('#cancel-job').hidden=true;$('#edit-failed').hidden=false;}if(typeof finishPracticeBoot==='function')await finishPracticeBoot();}
+  }catch(err){message(err.message,true);}finally{pendingGeneration=null;if(!activeJob)setBusy(false);if(lastFailedJob){$('#job-actions').hidden=false;$('#retry-job').hidden=false;$('#cancel-job').hidden=true;$('#edit-failed').hidden=false;}if(typeof finishPracticeBoot==='function')await finishPracticeBoot();if(currentView==='agent'&&typeof loadAgentConversation==='function')await loadAgentConversation();}
 }
 window.addEventListener('pagehide',()=>saveSnapshot(!$('#summary').hidden));
 setInterval(()=>{if(!busy&&collectionId&&(typeof currentUser==='undefined'||currentUser))refreshCollection().catch(()=>{});},4000);
