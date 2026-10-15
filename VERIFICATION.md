@@ -1,5 +1,14 @@
 # Verification record
 
+## Practice my mistakes, October 15, 2026
+
+- Added a summary action for private generated MCQ/calculation sets with latest incorrect/skipped submissions. A checkbox dialog lets students select focus questions and generate four new questions in the same format/difficulty. Flashcards, ungraded answers, sample/imported content, and shared copies are excluded. Skipped questions now have a separate summary count.
+- New owner-authorized preview/generation endpoints regrade stored responses, check selected IDs and source ownership, restrict the RAG material snapshot to the selected questions' cited lectures, and preserve the original quiz/progress. New calculations store gradedValue separately from an unsubmitted edited value. Requests persist parent relationships, selected question/attempt context, source dependencies, retrieval snapshots, and current focus-review results. No additional vector database or migration is required.
+- Network submissions are idempotent. Cancel/retry and existing saved-job recovery reuse the request. Job responses expose only the focus fields needed to reconstruct the UI, not the student's prior answer. A routing regression now gives a completed background result precedence over the initial parent deep link after refresh. Deleting a parent detaches stored mistake context and model review while retaining independent follow-ups.
+- Early live checks exposed broad parent instructions and paraphrases leaking into the follow-up. Removed the broad parent request from the generation context, restricted the search query to selected prompts, added a wording-similarity guard, and added a structured AI focus/novelty review. Up to three bounded generation/repair attempts are allowed for this feature. The review is not an independent factual-accuracy guarantee.
+- Live verification used the isolated authored gradient-descent fixture library with real OpenAI embeddings/generation and Cohere reranking. A session with two correct answers, one wrong answer, and one skipped answer produced the summary action. Selecting only the negative-gradient-direction mistake generated four new interpretation/application questions about that concept; the original source viewer opened the exact lecture passage. Original parent answers persisted. No main-library quizzes/progress were edited for QA.
+- All 138 Python tests and JavaScript behavior checks passed. New checks cover regrading/scientific notation, unsubmitted numeric drafts, eligibility, focus/material isolation, citations, count/format/difficulty, idempotency, cancellation/retry, model-focus failure/repair bounds, ownership/authentication, unavailable indexing, parent deletion, preserved progress, and completed-job routing. At 390×844 the dialog was 370px wide with no page overflow; the viewport override was reset. Screenshot: portfolio output/lecture-lab-practice-mistakes.png.
+
 ## English and Simplified Chinese UI, October 15, 2026
 
 - Replaced the library footer Import set action with a styled Language selector offering English and 简体中文. The language preference is stored locally and sets the document language. Shared UI labels, placeholders, accessible control names, and common dynamic counts update without changing option values or study data.
@@ -414,3 +423,43 @@ Added saved-set renaming with owner-authorized PATCH, trimmed title validation, 
 Following the user's subsequent instruction, removed the quiz Remove button and selection controls from the interface, retaining Rename and recovery for any previously removed sets. Updated frontend checks pass for naming, blank/failed rename recovery, unchanged active practice/follow-up context, absent Remove controls, and prior-removal Undo isolation. Existing frontend, creator, social, and JS syntax checks passed.
 
 Added an accessible top-left sidebar toggle using the existing Lucide chevron asset. The navigation slides away, becomes inert/aria-hidden, and the content column expands; reduced-motion settings disable transitions. A browser-local appearance preference survives refresh. Browser checks confirmed desktop content expands from 1272px to 1512px when the 240px sidebar closes. At 390×844, both sidebar states fit the viewport with page width 390, and no quiz Remove controls were present. The Rename dialog was inspected and cancelled; no real quizzes were renamed or removed. Temporary viewport override was reset. Screenshot: output/lecture-lab-sidebar-toggle.png in the portfolio workspace.
+
+
+## Leave study group and automatic ownership transfer
+
+- All members can drag a group card to the existing bottom target, labelled **Leave group**. Touch hold/drop and Delete/Escape keyboard controls remain available. The action removes only the caller's membership.
+- Leaving as owner transfers ownership to the earliest remaining member, ordered by joined time with stable insertion-order ties. Departed members are excluded; rejoining adds them at their new join position. The current owner is labelled in the member list.
+- Shared snapshots and all saved shared progress remain when members remain, including the departing member's progress for a later rejoin. The departing user can no longer access group/shared APIs until rejoining with the unchanged invite code. Private lectures/quizzes and other groups remain intact.
+- An empty group is cleaned up only when its last member leaves. Demo initialization does not recreate departed memberships or reset transferred ownership after restart.
+- POST /api/groups/{gid}/leave is the primary route. The previous DELETE endpoint is a compatibility alias for leaving, never a full-group deletion while other members remain. Membership removal and owner reassignment run in one write transaction; joins, shares, and progress writes recheck membership inside write transactions.
+- Fixture backend checks cover owner handoff, ordinary member leave, rejoin succession, stable join-order ties, unauthenticated/nonmember rejection, preserved shared/private progress, empty-group cleanup, and restart persistence. Frontend checks cover all-member eligibility, native/touch/keyboard controls, Escape, account changes, API failures, the Leave group label, and clearing only inaccessible open shared practice. No real user membership or group was changed during testing.
+
+- Visible **Leave group** buttons now appear on each group card and beside **Share a set** inside a group. Frontend checks verify direct detail-page exit, retry after an API failure, preserved private practice, and excluded drag pickup from the exit button. Browser inspection in an isolated demo confirmed both buttons render; no real membership was changed.
+
+
+## Focused group details and collection-first sharing
+
+- Opening a group hides the overview heading, join/create actions, and introductory text. The group name is the page heading, with All groups navigation, Leave group, and Add study set. Group overview cards have no leave button or drag-to-exit behavior.
+- Add study set fixes the target group and asks for a collection first. Only after selecting it does the saved-set selector appear; the server query is scoped to that collection. Quiz, flashcard, calculation, and cheat sheet sets remain supported. Sharing from private practice still offers an explicit target group.
+- Submission is gated on a valid set from the currently loaded collection. Empty collections, failed requests, late collection responses, account changes, and duplicate submission are guarded. Shared snapshots keep original files and private progress separate.
+- Frontend regression checks passed for focused header visibility, detail-only leave, collection-first gating, all set formats, empty collections, changing collections, late responses, retry preservation, and duplicate-submit prevention.
+- A browser check in the prepared isolated QA database selected Machine Learning, selected an existing generated quiz, and added its snapshot to the demo group. The new four-question set appeared in the group alongside the authored demo sets. Screenshots record the picker and focused group page; no real user group was modified.
+
+
+## Owner-only shared-set deletion and duplicate protection
+
+- Group owners can drag shared quiz/flashcard/calculation/cheat-sheet cards to the existing bottom trash target. Mouse, long-press touch, and Delete/Escape controls reuse private-set deletion handlers. Members can open sets but cannot pick them up for deletion. Permissions are rechecked by the server, including after ownership changes.
+- The shared-copy DELETE endpoint removes only that group snapshot and its shared progress. Original quizzes, materials, other groups, and unrelated practice are preserved. A removed original set becomes eligible to share again.
+- Sharing the same original saved quiz twice into one group returns 409. A SQLite unique index enforces group/original identity, including simultaneous requests. Equal titles with distinct saved IDs remain distinct sets.
+- The picker refreshes eligibility for the selected group and collection, disables existing options with Already added, rejects programmatic duplicate selection, and refreshes after a server duplicate conflict. Eligibility responses expose only IDs from the requesting member's own saved collections.
+- Existing repeated shares are consolidated into the earliest snapshot before the unique index is created. Compatible answers from duplicate copies are merged without overwriting already submitted canonical answers; a pre-migration SQLite backup retains the full original snapshots and progress.
+- Browser verification exposed the trash target inside the hidden library panel. It now sits in the common main layout; an HTML-parent regression check prevents hiding it when groups are shown. Browser checks in an isolated QA database confirmed visible owner pickup/trash and a greyed-out Already added option. Pickup was cancelled; actual deletion, permission rejection, concurrency, and migration were verified with isolated backend/frontend tests.
+
+
+## Shared practice returns to its group; duplicates disabled before submit
+
+- Shared quizzes, flashcards, and cheat sheets show Return to group in the top-left study navigation; completion screens use the same destination. The group ID comes from the shared-set API, so the behavior also works after a direct link or refresh. Return saves shared practice progress before opening that group. Private practice retains Home.
+- Collection quiz listing accepts an authenticated, membership-checked groupId and returns an alreadyShared boolean with each private quiz. The picker uses this single response to disable Already added options before submission. Other groups have independent eligibility, and deleting a shared copy makes its original eligible again.
+- If another request adds a selected quiz after the picker loads, the server still prevents duplicates while the interface silently refreshes the disabled option instead of showing the duplicate-request error. Other network/API errors remain visible for retry; old/malformed eligibility responses fail closed.
+- Backend checks verify group-specific flags, private collection isolation, nonmember rejection, and eligibility after removal. Frontend checks cover top/summary return labels, saved progress, group identity independent of prior navigation, Home reset for private quizzes, missing-group recovery, and silent duplicate conflict refresh.
+- Browser verification in the isolated prepared QA database opened a genuine shared quiz, confirmed Return to group, clicked it to reopen the original group, and inspected an Already added disabled option in the collection picker. No real user's group or practice was modified.

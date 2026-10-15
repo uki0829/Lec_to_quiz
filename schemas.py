@@ -34,6 +34,11 @@ class Selection(StrictModel):
     sourceIds: list[str]
 
 
+class MistakeReview(StrictModel):
+    status: Literal['ready', 'repair']
+    message: str
+
+
 class AgentPlan(StrictModel):
     action: Literal['generate', 'clarify']
     message: str

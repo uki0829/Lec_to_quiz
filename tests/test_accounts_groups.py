@@ -172,3 +172,107 @@ def test_throttle_and_existing_database_migration(tmp_path):
         client.cookies.set(COOKIE,session)
         assert client.get('/api/auth/me').json()['user']['id']==user
         assert client.get('/api/groups/'+group).status_code==200
+
+
+
+def test_owner_leaves_and_transfers_group_preserving_shared_work(social):
+    app,alice,bob=social;store=app.state.store
+    mid=prepared_notes(alice,app.state.engine);quiz=generate(alice,app.state.engine,mid)
+    group=alice.post('/api/groups',json={'name':'Keep studying'}).json();gid=group['id']
+    shared=alice.post(f'/api/groups/{gid}/share',json={'quizId':quiz['id']}).json()['shareId']
+    bob.post('/api/groups/join',json={'code':group['invite_code']})
+    bob_id=bob.get('/api/auth/me').json()['user']['id']
+    progress={'index':0,'answers':{quiz['questions'][0]['id']:{'submitted':True}}}
+    for client in (alice,bob):
+        assert client.put(f'/api/shared-sets/{shared}/progress',json=progress).status_code==200
+    result=alice.post(f'/api/groups/{gid}/leave')
+    assert result.status_code==200
+    assert result.json()=={'left':True,'groupId':gid,'ownerId':bob_id,'groupRemoved':False,'deletedShareIds':[]}
+    assert alice.get(f'/api/groups/{gid}').status_code==404
+    assert alice.get(f'/api/shared-sets/{shared}').status_code==404
+    assert alice.get('/api/groups').json()['groups']==[]
+    assert len(bob.get(f'/api/groups/{gid}').json()['members'])==1
+    assert bob.get(f'/api/shared-sets/{shared}').json()['progress']==progress
+    assert len(store.all('SELECT * FROM shared_progress WHERE share_id=?',(shared,)))==2
+    assert alice.get(f'/api/quizzes/{quiz["id"]}').status_code==200
+    assert alice.get(f'/api/materials/{mid}').status_code==200
+    # Leaving is reversible through the unchanged invite code, without reclaiming ownership.
+    assert alice.post('/api/groups/join',json={'code':group['invite_code']}).status_code==200
+    assert alice.get(f'/api/groups/{gid}').json()['owner_id']==bob_id
+    assert alice.get(f'/api/shared-sets/{shared}').json()['progress']==progress
+
+
+def test_member_leave_keeps_owner_and_rejoining_changes_succession_order(social):
+    app,alice,bob=social;store=app.state.store
+    group=alice.post('/api/groups',json={'name':'Ordered group'}).json();gid=group['id']
+    bob.post('/api/groups/join',json={'code':group['invite_code']})
+    with TestClient(app) as charlie:
+        charlie.post('/api/auth/register',json={'name':'Charlie','email':'charlie@example.test','password':'StudyDemo!123'})
+        charlie_id=charlie.get('/api/auth/me').json()['user']['id']
+        charlie.post('/api/groups/join',json={'code':group['invite_code']})
+        # Compatibility DELETE means leave, including for ordinary members.
+        response=bob.delete(f'/api/groups/{gid}')
+        assert response.status_code==200 and response.json()['ownerId']==group['owner_id']
+        assert len(alice.get(f'/api/groups/{gid}').json()['members'])==2
+        assert bob.post('/api/groups/join',json={'code':group['invite_code']}).status_code==200
+        assert alice.post(f'/api/groups/{gid}/leave').json()['ownerId']==charlie_id
+        assert bob.get(f'/api/groups/{gid}').json()['owner_id']==charlie_id
+
+
+def test_owner_handoff_uses_join_order_with_stable_ties(social):
+    app,alice,bob=social;store=app.state.store
+    group=alice.post('/api/groups',json={'name':'Join order'}).json();gid=group['id']
+    bob.post('/api/groups/join',json={'code':group['invite_code']})
+    bob_id=bob.get('/api/auth/me').json()['user']['id']
+    with TestClient(app) as charlie:
+        charlie.post('/api/auth/register',json={'name':'Charlie','email':'charlie@example.test','password':'StudyDemo!123'})
+        charlie.post('/api/groups/join',json={'code':group['invite_code']})
+        store.execute('UPDATE group_members SET joined=100 WHERE group_id=?',(gid,))
+        assert alice.post(f'/api/groups/{gid}/leave').json()['ownerId']==bob_id
+
+
+def test_leaving_requires_authenticated_membership(social):
+    app,alice,bob=social
+    group=alice.post('/api/groups',json={'name':'Members only'}).json();gid=group['id']
+    assert bob.post(f'/api/groups/{gid}/leave').status_code==404
+    assert bob.delete(f'/api/groups/{gid}').status_code==404
+    assert alice.get(f'/api/groups/{gid}').status_code==200
+    bob.post('/api/auth/logout')
+    assert bob.post(f'/api/groups/{gid}/leave').status_code==401
+
+
+def test_last_member_leave_cleans_empty_group_only(social):
+    app,alice,bob=social;store=app.state.store
+    mid=prepared_notes(alice,app.state.engine);quiz=generate(alice,app.state.engine,mid)
+    group=alice.post('/api/groups',json={'name':'Solo group'}).json();gid=group['id']
+    other=alice.post('/api/groups',json={'name':'Another group'}).json()['id']
+    shared=alice.post(f'/api/groups/{gid}/share',json={'quizId':quiz['id']}).json()['shareId']
+    progress={'index':0,'answers':{}}
+    alice.put(f'/api/shared-sets/{shared}/progress',json=progress)
+    result=alice.post(f'/api/groups/{gid}/leave').json()
+    assert result['groupRemoved'] and result['ownerId'] is None
+    for table,column in [('study_groups','id'),('group_members','group_id'),('group_sets','group_id')]:
+        assert not store.all(f'SELECT * FROM {table} WHERE {column}=?',(gid,))
+    assert not store.all('SELECT * FROM shared_progress WHERE share_id=?',(shared,))
+    assert alice.get(f'/api/quizzes/{quiz["id"]}').status_code==200
+    assert alice.get(f'/api/materials/{mid}').status_code==200
+    assert alice.get(f'/api/groups/{other}').status_code==200
+    assert alice.post('/api/groups/join',json={'code':group['invite_code']}).status_code==404
+    assert alice.post(f'/api/groups/{gid}/leave').status_code==404
+
+
+def test_demo_leave_and_ownership_transfer_persist_after_restart(tmp_path):
+    app=create_app(tmp_path,ai=FakeAI(),run_jobs=False)
+    with TestClient(app) as client:
+        client.post('/api/auth/demo')
+        response=client.post('/api/groups/demo-study-group/leave')
+        assert response.status_code==200 and response.json()['ownerId']=='demo-mia'
+        assert client.get('/api/groups').json()['groups']==[]
+    restarted=create_app(tmp_path,ai=FakeAI(),run_jobs=False)
+    with TestClient(restarted) as client:
+        client.post('/api/auth/demo')
+        assert client.get('/api/groups').json()['groups']==[]
+        store=restarted.state.store
+        assert store.one("SELECT owner_id FROM study_groups WHERE id='demo-study-group'")['owner_id']=='demo-mia'
+        assert len(store.all("SELECT * FROM group_members WHERE group_id='demo-study-group'"))==1
+        assert len(store.all("SELECT * FROM group_sets WHERE group_id='demo-study-group'"))==3

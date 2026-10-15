@@ -171,21 +171,27 @@ class Store:
         """Permanently remove sets inside the caller's validated transaction."""
         marks = ','.join('?' for _ in quiz_ids)
 
-        def detach_parent(value):
+        def detach_parent(value, clear_practice=False):
             value = dict(value)
+            clear_practice = clear_practice or bool(value.get('mistakePractice'))
+            if clear_practice and 'prompt' in value:
+                value['prompt'] = 'Focused follow-up practice.'
             value.pop('parentQuizId', None)
             value.pop('followupContext', None)
+            value.pop('mistakePractice', None)
+            value.pop('focusReview', None)
             if 'retrievalQuery' in value:
                 value['retrievalQuery'] = value.get('prompt', '')
             if isinstance(value.get('submitted'), dict):
-                value['submitted'] = detach_parent(value['submitted'])
+                value['submitted'] = detach_parent(value['submitted'], clear_practice)
             return value
 
         # Existing follow-up sets remain usable independently of their parent.
         for row in db.execute(f'SELECT * FROM requests WHERE parent_quiz_id IN ({marks})', quiz_ids).fetchall():
+            clear_practice = bool(json.loads(row['resolved']).get('mistakePractice'))
             db.execute('UPDATE requests SET parent_quiz_id=NULL,submitted=?,resolved=? WHERE id=?',
-                       (json.dumps(detach_parent(json.loads(row['submitted']))),
-                        json.dumps(detach_parent(json.loads(row['resolved']))), row['id']))
+                       (json.dumps(detach_parent(json.loads(row['submitted']), clear_practice)),
+                        json.dumps(detach_parent(json.loads(row['resolved']), clear_practice)), row['id']))
         for row in db.execute(f"SELECT id,params FROM jobs WHERE json_extract(params,'$.parentQuizId') IN ({marks})", quiz_ids).fetchall():
             db.execute('UPDATE jobs SET params=? WHERE id=?',
                        (json.dumps(detach_parent(json.loads(row['params']))), row['id']))

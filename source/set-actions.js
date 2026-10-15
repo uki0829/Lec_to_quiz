@@ -2,7 +2,7 @@
 let setActionsBusy=false,setRenameId=null;
 function resetSetActions(){if(typeof endSetDrag==='function')endSetDrag();setRenameId=null;}
 function updateSetActions(){
-  document.querySelectorAll('.managed-set button').forEach(b=>b.disabled=busy||setActionsBusy);
+  document.querySelectorAll('.managed-set button,.material-actions button,.group-card button,.group-set-card,#group-leave,#group-share,#create-group,#join-group').forEach(b=>b.disabled=busy||setActionsBusy);
   for(const id of ['set-name','save-set-name','cancel-rename-set','close-rename-set'])$('#'+id).disabled=setActionsBusy;
 }
 function renderSetCards(sets,search){

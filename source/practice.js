@@ -30,10 +30,10 @@ async function loadPracticeRoute(path){
   }catch(err){showView('library');message(err.message,true);}
   finally{practiceRouteBusy=false;syncPracticePage(currentView,true);}
 }
-async function finishPracticeBoot(){
+async function finishPracticeBoot(preferGenerated=false){
   if(!practiceBooting)return;
   practiceBooting=false;
-  if(initialPracticePath.startsWith('/study/'))await loadPracticeRoute(initialPracticePath);
+  if(!preferGenerated&&initialPracticePath.startsWith('/study/'))await loadPracticeRoute(initialPracticePath);
   else syncPracticePage(currentView,true);
 }
 window.addEventListener('popstate',()=>{scheduleSave(!$('#summary').hidden);loadPracticeRoute(location.pathname);});

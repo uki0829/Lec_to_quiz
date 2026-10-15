@@ -121,7 +121,7 @@ function submitCalculation(){
   const value=$('#number-answer').value.trim();
   const correct=gradeNumeric(value,q.numericAnswer,q.tolerance);
   if(correct===null){$('#answer-message').textContent='Enter a number, e.g. 2.4 or -0.5.';return;}
-  answers[q.id]={value,submitted:true,correct};
+  answers[q.id]={value,gradedValue:value,submitted:true,correct};
   playAnswerSound(correct);
   render();
   if(!correct){$('#number-answer').focus({preventScroll:true});$('#number-answer').select?.();}
@@ -216,6 +216,7 @@ function showSummary(){
     : answers[q.id]?.submitted).length;
   const graded=quiz.questions.filter(q=>answers[q.id]?.submitted);
   const correct=graded.filter(q=>answers[q.id].correct).length;
+  const skipped=graded.filter(q=>answers[q.id].skipped).length;
   const remaining=total-completed,percent=Math.round(completed/total*100);
   const status=q=>{const a=answers[q.id];if(cards)return a?.reviewed||a?.revealed||a?.submitted?'Reviewed':'Not reviewed';return a?.skipped?'Skipped':a?.submitted
     ? a.correct?(cards?'Recalled':'Correct'):(cards?'Practice again':'Incorrect')
@@ -227,12 +228,14 @@ function showSummary(){
     '<div class="completion-grid"><section class="completion-overview" aria-label="Session progress"><h3>Your progress</h3>'+
     '<div class="completion-progress"><div class="completion-ring" style="--completion:'+percent+'%" aria-hidden="true"><span>'+percent+'%</span></div>'+
     '<dl class="completion-counts"><div><dt>Completed</dt><dd>'+completed+'</dd></div><div><dt>Remaining</dt><dd>'+remaining+'</dd></div></dl></div>'+
-    (!cards&&graded.length?'<p class="completion-score">'+correct+' correct · '+(graded.length-correct)+' incorrect</p>':'')+
+    (!cards&&graded.length?'<p class="completion-score">'+correct+' correct · '+(graded.length-correct-skipped)+' incorrect'+(skipped?' · '+skipped+' skipped':'')+'</p>':'')+
     '</section><section class="completion-next" aria-label="Next steps"><h3>Next steps</h3>'+
+    (typeof mistakeSummaryAction==='function'?mistakeSummaryAction():'')+
     '<button id="review-restart" class="completion-restart"><span class="restart-icon">'+flashIcon('rotate-ccw')+'</span><span><strong>Restart '+(cards?'flashcards':'quiz')+'</strong><small>'+total+' '+(cards?'cards':'questions')+'</small></span>'+flashIcon('chevron-right')+'</button></section></div>'+
     '<details class="completion-details"><summary>Question summary</summary><ol class="completion-questions">'+
     quiz.questions.map(q=>'<li><span>'+mathHtml(q.prompt)+'</span><strong>'+status(q)+'</strong></li>').join('')+'</ol></details>'+
-    '<div class="completion-footer"><button class="completion-back" id="review-previous">'+flashIcon('arrow-left')+'Back to last question</button><button class="completion-home" id="review-next">Home'+flashIcon('arrow-right')+'</button></div>';
+    '<div class="completion-footer"><button class="completion-back" id="review-previous">'+flashIcon('arrow-left')+'Back to last question</button><button class="completion-home" id="review-next">'+(typeof studyReturnLabel==='function'?studyReturnLabel():'Home')+flashIcon('arrow-right')+'</button></div>';
+  if(typeof bindMistakeSummary==='function')bindMistakeSummary();
   $('#review-restart').onclick=()=>{
     index=0;answers={};quiz.progress={index:0,answers:{},review:false};
     $('#summary').hidden=true;$('#study').hidden=false;render();

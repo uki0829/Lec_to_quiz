@@ -33,3 +33,10 @@ await vm.runInContext("loadPracticeRoute('/study/quiz/missing')",context);
 assert.equal(location.pathname,'/');assert.equal(vm.runInContext('currentView',context),'library');
 assert.ok(calls.some(c=>c[0]==='error'));
 console.log('Study route checks passed: deep-link overrides stale snapshots, private/shared API resolution, Home/Back, local samples, sheet separation, and missing-set recovery.');
+// A completed background generation takes precedence over its parent's initial deep link.
+location.pathname='/study/quiz/deep-link';
+vm.runInContext("practiceBooting=true;quiz={id:'completed-followup',mode:'generated',format:'mcq'};currentView='study'",context);
+await vm.runInContext('finishPracticeBoot(true)',context);
+assert.equal(vm.runInContext('quiz.id',context),'completed-followup');
+assert.equal(location.pathname,'/study/quiz/completed-followup');
+console.log('Refreshed background generation opens its completed follow-up instead of reopening the parent route.');

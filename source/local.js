@@ -120,10 +120,10 @@ async function refreshCollection() {
   $('#materials-count').textContent=c.materials.length;
   const materialsKey=cid+JSON.stringify(c.materials);
   if(materialsKey!==renderedMaterialsKey){renderedMaterialsKey=materialsKey;
-    $('#collection-materials').innerHTML=c.materials.map(m=>'<article class="material-card" data-material-title="'+esc(m.title.toLowerCase())+'"><div class="material-title">'+icon('file-text')+'<strong>'+esc(m.title)+'</strong></div><div class="material-state">'+esc(m.searchReady?'Ready for practice':m.status==='ready'?'Indexing: '+(m.jobStatus||'pending'):m.status)+' · '+m.sourceCount+' source sections</div><div class="material-actions"><button class="quiet" data-view="'+esc(m.id)+'">'+icon('book-open')+'View sources</button>'+(!m.searchReady?'<button class="quiet" data-process="'+esc(m.id)+'">'+icon('rotate-ccw')+(['queued','running'].includes(m.jobStatus)?'Check progress':'Process / retry')+'</button>':'')+'<button class="quiet danger" data-delete="'+esc(m.id)+'" aria-label="Remove '+esc(m.title)+'">'+icon('trash-2')+'</button></div></article>').join('')||'<p class="empty-results">Add your first lecture.</p>';
+    $('#collection-materials').innerHTML=c.materials.map(m=>'<article class="material-card" draggable="true" tabindex="0" data-drag-material="'+esc(m.id)+'" aria-label="'+esc(m.title)+'" aria-keyshortcuts="Delete" aria-description="Drag to the trash to delete. Press Delete for keyboard controls." data-material-title="'+esc(m.title.toLowerCase())+'"><div class="material-title">'+icon('file-text')+'<strong>'+esc(m.title)+'</strong></div><div class="material-state">'+esc(m.searchReady?'Ready for practice':m.status==='ready'?'Indexing: '+(m.jobStatus||'pending'):m.status)+' · '+m.sourceCount+' source sections</div><div class="material-actions"><button class="quiet" data-view="'+esc(m.id)+'">'+icon('book-open')+'View sources</button>'+(!m.searchReady?'<button class="quiet" data-process="'+esc(m.id)+'">'+icon('rotate-ccw')+(['queued','running'].includes(m.jobStatus)?'Check progress':'Process / retry')+'</button>':'')+'</div></article>').join('')||'<p class="empty-results">Add your first lecture.</p>';
     $('#collection-materials').querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>loadMaterial(b.dataset.view).catch(err=>message(err.message,true)));
     $('#collection-materials').querySelectorAll('[data-process]').forEach(b=>b.onclick=()=>resumeMaterial(b.dataset.process));
-    $('#collection-materials').querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeMaterial(b.dataset.delete));
+    if(typeof bindMaterialDrag==='function')$('#collection-materials').querySelectorAll('[data-drag-material]').forEach(bindMaterialDrag);
   }
   const quizzesKey=cid+JSON.stringify(saved.quizzes.map(q=>({id:q.id,title:q.title,format:q.format,count:q.questionCount,sections:q.sectionCount,answered:q.answeredCount})));
   if(quizzesKey!==renderedQuizzesKey){renderedQuizzesKey=quizzesKey;
@@ -200,17 +200,20 @@ $('#confirm-delete-folder').onclick=async()=>{
   finally{folderDeleting=false;$('#confirm-delete-folder').disabled=false;$('#cancel-delete-folder').disabled=false;$('#close-delete-folder').disabled=false;}
 };
 
-async function removeMaterial(id) {
+async function removeMaterial(id,expectedCollectionId=collectionId) {
   try {const impact=await api('/api/materials/'+id+'/deletion-impact');const title=currentCollection?.materials.find(m=>m.id===id)?.title||'this material';
-    if(!confirm('Remove '+title+' and its source files? '+(impact.quizzes.length?'This also deletes '+impact.quizzes.length+' quizzes that cite it: '+impact.quizzes.map(q=>q.title).join(', '):'No saved quizzes cite it.')))return;
+    if(collectionId!==expectedCollectionId)return;
+    if(impact.quizzes.length&&!confirm('Permanently delete '+title+' and its source files? This also deletes '+impact.quizzes.length+' quizzes that cite it: '+impact.quizzes.map(q=>q.title).join(', ')))return;
+    if(collectionId!==expectedCollectionId)return;
     const result=await api('/api/materials/'+id,{method:'DELETE'});
-    if(result.deletedQuizIds.includes(quiz?.id)||(quiz?.mode==='bank'&&quiz.questions.some(q=>result.deletedQuizIds.includes(q.originQuizId)))){quiz=null;answers={};$('#cheatsheet').hidden=true;$('#study').hidden=true;$('#summary').hidden=true;$('#empty').hidden=false;$('#quiz-context').hidden=true;$('#build-followup').hidden=true;$('#mode-badge').textContent='Ready when you are';showView('library');}
+    if(result.deletedQuizIds.includes(quiz?.id)||(quiz?.mode==='bank'&&quiz.questions.some(q=>result.deletedQuizIds.includes(q.originQuizId)))){clearTimeout(saveTimer);cancelQuizAdvance();closeQuizExplanation();quiz=null;answers={};$('#cheatsheet').hidden=true;$('#study').hidden=true;$('#summary').hidden=true;$('#empty').hidden=false;$('#quiz-context').hidden=true;$('#build-followup').hidden=true;$('#mode-badge').textContent='Ready when you are';showView('library');}
     if(result.deletedQuizIds.includes(parentQuizId)){$('#clear-followup').click();}
     if(materialId===id){materialId=null;$('#material-summary').innerHTML='';}
+    if(composerMaterialId===id){composerMaterialId=null;composerJobId=null;composerLoadedTitle='';composerReady=false;composerStep='upload';}
     saveSnapshot();await refreshLibrary();message('Material and dependent quizzes removed.');
   }catch(err){message(err.message,true);}
 }
-function showJob(job) {$('#job-panel').hidden=false;const fraction=job.total?Math.min(1,job.completed/job.total):null;$('#job-status').innerHTML='<span>'+esc(['failed','cancelled','interrupted'].includes(job.status)?friendlyJobError(job):job.stage)+'</span>'+(fraction!==null?'<progress class="job-meter" value="'+fraction+'" max="1" aria-label="Processing progress"></progress><span class="tiny">'+job.completed+' of '+job.total+' units</span>':'');$('#composer-job-status').innerHTML=$('#job-status').innerHTML;}
+function showJob(job) {$('#job-panel').hidden=false;const fraction=job.total?Math.min(1,job.completed/job.total):null;$('#job-status').innerHTML='<span>'+esc(['failed','cancelled','interrupted'].includes(job.status)?friendlyJobError(job):job.stage)+'</span>'+(fraction!==null?'<progress class="job-meter" value="'+fraction+'" max="1" aria-label="Processing progress"></progress><span class="tiny">'+job.completed+' of '+job.total+' units</span>':'');$('#composer-job-status').innerHTML=$('#job-status').innerHTML;if(typeof syncMistakeJob==='function')syncMistakeJob(job);}
 function pause(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function watchJob(jobId) {
   const token=++pollToken;activeJob=jobId;lastFailedJob=null;$('#retry-job').hidden=true;setBusy(true);saveSnapshot();
@@ -446,7 +449,22 @@ function friendlyJobError(job){
   return job.error||'Processing was '+job.status+'. Retry to reuse completed work.';
 }
 $('#brand-home').onclick=()=>{const fromStudy=currentView==='study';showView('library');if(fromStudy)setLibraryTab('sets');saveSnapshot();};
-$('#back-library').onclick=()=>{showView('library');setLibraryTab('sets');saveSnapshot($('#summary').hidden===false);};
+function studyReturnLabel(){return quiz?.mode==='shared'&&quiz.groupId?'Return to group':'Home';}
+function syncStudyReturn(){
+  $('#back-library').innerHTML=icon('arrow-left')+'<span>'+studyReturnLabel()+'</span>';
+}
+let returningToGroup=false;
+$('#back-library').onclick=async()=>{
+  if(quiz?.mode!=='shared'||!quiz.groupId){showView('library');setLibraryTab('sets');saveSnapshot($('#summary').hidden===false);return;}
+  if(returningToGroup)return;
+  const gid=quiz.groupId;returningToGroup=true;$('#back-library').disabled=true;
+  cancelQuizAdvance();closeQuizExplanation();
+  try{
+    await flushPracticeProgress();
+    if(!await openGroup(gid)){await showGroups();message('Could not open this group.',true);}
+  }catch(err){message(err.message,true);}
+  finally{returningToGroup=false;$('#back-library').disabled=false;}
+};
 for(const id of ['header-create','open-composer'])$('#'+id).onclick=()=>openComposer();
 $('#materials-add').onclick=openUpload;
 document.querySelectorAll('[data-module]').forEach(b=>b.onclick=()=>openComposer(b.dataset.module));
@@ -483,7 +501,7 @@ $('#edit-failed').onclick=async()=>{try{if(!lastFailedJob)return openComposer();
 async function boot() {
   if(typeof startSession==='function'&&!currentUser)return startSession();
   setBusy(true);
-  let state;try{state=JSON.parse(localStorage.getItem(typeof studyStateKey==='function'?studyStateKey():'lecture-lab-state')||'null');}catch{}
+  let state,completedPractice=false;try{state=JSON.parse(localStorage.getItem(typeof studyStateKey==='function'?studyStateKey():'lecture-lab-state')||'null');}catch{}
   try {await checkConnection();
     if(state?.collectionId)collectionId=state.collectionId;
     else if(state?.materialId){try{collectionId=(await api('/api/materials/'+state.materialId)).collectionId;}catch{}}
@@ -502,13 +520,13 @@ async function boot() {
       }
       if(state.activeJob){pendingGeneration=state.pendingGeneration;const job=await watchJob(state.activeJob);
         if(['material','index'].includes(job.kind)){if(composerMaterialId&&job.material_id===composerMaterialId)await finishComposerMaterial(composerMaterialId);else if(pendingGeneration)await generateQuiz({...pendingGeneration,collectionId});}
-        else if(job.result?.status==='ready'){if(currentView!=='agent')startQuiz(await api('/api/quizzes/'+job.result.quizId));}else if(job.result?.message)message(job.result.message,true);
+        else if(job.result?.status==='ready'){if(currentView!=='agent'){startQuiz(await api('/api/quizzes/'+job.result.quizId));completedPractice=true;}}else if(job.result?.message)message(job.result.message,true);
       }
     }
     if(state?.creator?.open&&composerJobId&&!activeJob){const j=await api('/api/jobs/'+composerJobId);if(['failed','cancelled','interrupted'].includes(j.status))lastFailedJob=j.id;else if(j.status==='completed')await finishComposerMaterial(composerMaterialId);}
     updateComposerState();
     if(!activeJob&&currentCollection?.latestQuizJob&&['failed','cancelled','interrupted'].includes(currentCollection.latestQuizJob.status)){lastFailedJob=currentCollection.latestQuizJob.id;const old=await api('/api/jobs/'+lastFailedJob);showJob(old);$('#job-panel').classList.add('failed');$('#job-actions').hidden=false;$('#cancel-job').hidden=true;$('#retry-job').hidden=false;$('#edit-failed').hidden=false;}
-  }catch(err){message(err.message,true);}finally{pendingGeneration=null;if(!activeJob)setBusy(false);if(lastFailedJob){$('#job-actions').hidden=false;$('#retry-job').hidden=false;$('#cancel-job').hidden=true;$('#edit-failed').hidden=false;}if(typeof finishPracticeBoot==='function')await finishPracticeBoot();if(currentView==='agent'&&typeof loadAgentConversation==='function')await loadAgentConversation();}
+  }catch(err){message(err.message,true);}finally{pendingGeneration=null;if(!activeJob)setBusy(false);if(lastFailedJob){$('#job-actions').hidden=false;$('#retry-job').hidden=false;$('#cancel-job').hidden=true;$('#edit-failed').hidden=false;}if(typeof finishPracticeBoot==='function')await finishPracticeBoot(completedPractice);if(currentView==='agent'&&typeof loadAgentConversation==='function')await loadAgentConversation();}
 }
 window.addEventListener('pagehide',()=>saveSnapshot(!$('#summary').hidden));
 setInterval(()=>{if(!busy&&collectionId&&(typeof currentUser==='undefined'||currentUser))refreshCollection().catch(()=>{});},4000);

@@ -14,6 +14,7 @@ import pymupdf as fitz
 import imageio_ffmpeg
 
 from schemas import validate_quiz, normalize
+from mistakes import near_repeat
 from retrieval import Retriever
 from reranking import CohereReranker
 
@@ -344,7 +345,9 @@ class Engine:
         cid = params.get('collectionId') or self.store.collection_for(material_id)
         mids = params.get('materialSnapshot') or [material_id]
         query = params['prompt']
-        if params.get('followupContext'):
+        if params.get('mistakePractice'):
+            query = params['retrievalQuery']
+        elif params.get('followupContext'):
             query = params['followupContext']['request'] + '\nFollow-up: ' + query
         sources = self.retriever.search(cid, mids, query, lambda: self.check(job_id))
         if self.reranker.api_key and sources:
@@ -383,7 +386,8 @@ class Engine:
         chosen = [mapping[s] for s in dict.fromkeys(selected_ids)]
         self.stage(job_id, "Building your cheat sheet" if params['format'] == 'cheatsheet' else "Building your quiz", 2, 4)
         feedback = ""
-        for attempt in range(2):
+        attempts = 3 if params.get('mistakePractice') else 2
+        for attempt in range(attempts):
             self.check(job_id)
             raw = self.ai.generate(params, chosen, feedback)
             self.check(job_id)
@@ -393,9 +397,23 @@ class Engine:
                 previous = {normalize(q) for q in params.get('followupContext', {}).get('questions', [])}
                 if any(normalize(q['prompt']) in previous for q in quiz.get('questions', [])):
                     raise ValueError('The follow-up repeats an earlier question. Generate different questions grounded in the same lecture evidence.')
+                if params.get('mistakePractice') and any(near_repeat(q['prompt'], params.get('followupContext', {}).get('questions', [])) for q in quiz.get('questions', [])):
+                    raise ValueError('Mistake practice is too similar to an earlier question. Use a different scenario or task to test the selected concept, not a paraphrase. Numerical exercises may use new givens.')
+                if params.get('mistakePractice') and quiz['status'] == 'ready':
+                    if any(re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', q['prompt']) for q in quiz['questions']):
+                        raise ValueError('A question contains invalid control characters. Use standard LaTeX delimiters for all equations.')
+                    self.stage(job_id, 'Checking mistake focus', 3, 4)
+                    review = self.ai.review_mistake_practice(quiz['questions'], params['mistakePractice']['questions'])
+                    self.check(job_id)
+                    stored_request = self.store.one('SELECT resolved FROM requests WHERE job_id=?', (job_id,))
+                    if stored_request:
+                        self.store.execute('UPDATE requests SET resolved=? WHERE job_id=?', (json.dumps({**json.loads(stored_request['resolved']),
+                            'focusReview': {**review, 'attempt': attempt + 1}}), job_id))
+                    if review.get('status') != 'ready':
+                        raise ValueError('Targeted practice needs revision: ' + review.get('message', 'Keep every question within the selected concepts.'))
                 break
             except ValueError as exc:
-                if attempt:
+                if attempt == attempts - 1:
                     raise ValueError("The generated study set failed validation: " + str(exc)) from exc
                 feedback = json.dumps({'error': str(exc), 'previousAttempt': raw,
                     'instruction': 'Repair the identified issue, preserving other valid questions. '

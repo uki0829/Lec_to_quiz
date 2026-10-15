@@ -6,7 +6,7 @@
     if(control.select.id==='share-group')return 'users';
     if(control.select.id==='share-set')return ({flashcard:'layers',mcq:'clipboard-list',calculation:'calculator',cheatsheet:'file-text'})[option.dataset.format]||'book-open';
     if(control.select.id==='language-select')return 'languages';
-    if(['collection-filter','composer-collection','agent-collection'].includes(control.select.id))return 'folder';
+    if(['collection-filter','composer-collection','agent-collection','share-collection'].includes(control.select.id))return 'folder';
     if(control.select.id==='set-format-filter')return ({flashcard:'layers',mcq:'clipboard-list',calculation:'calculator',cheatsheet:'file-text'})[option.value]||'layers';
     return control.select.id==='composer-parent'?'book-open':'sparkles';
   }

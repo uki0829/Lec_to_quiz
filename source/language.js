@@ -2,9 +2,16 @@
 (() => {
   const catalogue = {
   "Home": "首页",
+  "Return to group": "返回小组",
+  "Could not open this group.": "无法打开该小组。",
+  "Refresh the app to check group availability.": "请刷新应用以检查小组学习集状态。",
   "Agent": "学习助手",
   "Study agent": "学习助手",
   "Study groups": "学习小组",
+  "Leave group": "退出小组",
+  "Owner": "组长",
+  "You left the group.": "你已退出小组。",
+  "Drop to leave the group. Escape cancels.": "拖放以退出小组，按 Esc 取消。",
   "Study folders": "学习文件夹",
   "Keep lectures for one course together.": "将同一课程的资料放在一起。",
   "New folder": "新建文件夹",
@@ -62,6 +69,20 @@
   "All groups": "全部小组",
   "Demo group": "示例小组",
   "Share a set": "分享学习集",
+  "Add study set": "添加学习集",
+  "Add to group": "添加到小组",
+  "Added to group.": "已添加到小组。",
+  "Already added": "已添加",
+  "Set removed from group.": "已从小组移除学习集。",
+  "Remove set from group": "从小组移除学习集",
+  "This set is already in the group.": "该学习集已在小组中。",
+  "1. Collection": "1. 学习文件夹",
+  "2. Study set": "2. 学习集",
+  "Choose a collection": "选择学习文件夹",
+  "Choose a group": "选择小组",
+  "Loading sets…": "正在加载学习集……",
+  "No saved sets in this collection.": "该文件夹中没有已保存的学习集。",
+  "Create a collection first.": "请先创建学习文件夹。",
   "Invite code": "邀请码",
   "Group name": "小组名称",
   "Copy": "复制",
@@ -229,6 +250,13 @@
     'Create calculations':'创建计算练习','Create a cheat sheet':'创建知识速查表',
     'PDF · Image · Audio · Video · TXT':'PDF · 图片 · 音频 · 视频 · TXT'
   });
+  Object.assign(catalogue, {
+    'Practice my mistakes':'针对错题练习','Choose questions. Get new practice.':'选择错题，生成新的练习。',
+    'Generate four questions':'生成四道题','Close mistake practice':'关闭错题练习',
+    'Loading missed questions…':'正在加载错题……','No mistakes to practice.':'当前没有需要练习的错题。',
+    'Creating new practice from your lectures…':'正在根据课程资料生成新练习……',
+    'Cancel generation':'取消生成'
+  });
   const control=document.querySelector('#language-select');
   const cache=new WeakMap();
   const protectedContent=[
@@ -256,6 +284,7 @@
   function translate(text){
     if(catalogue[text])return catalogue[text];
     const patterns=[
+      [/^(\d+) incorrect or skipped$/,(_,n)=>`${n} 道错题或跳过的题目`],
       [/^Question (\d+) of (\d+)$/,(_,n,total)=>`第 ${n} 题，共 ${total} 题`],
       [/^Question (\d+)$/,(_,n)=>`第 ${n} 题`],
       [/^(\d+) questions$/,(_,n)=>`${n} 道题`],

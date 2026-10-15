@@ -19,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sheet_documents import render_html, render_pdf, validate_document
 from study_agent import StudyAgent
+from mistakes import register_mistake_routes
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ai import AI
@@ -403,7 +404,12 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
         row = store.job(job_id)
         if not row:
             raise HTTPException(404, "Job not found.")
-        return {k: row[k] for k in ("id", "kind", "material_id", "status", "stage", "completed", "total", "result", "error")}
+        result = {k: row[k] for k in ("id", "kind", "material_id", "status", "stage", "completed", "total", "result", "error")}
+        practice = row['params'].get('mistakePractice')
+        if practice:
+            result['mistakePractice'] = {'parentQuizId': row['params'].get('parentQuizId'),
+                'questions': [{k: q[k] for k in ('questionId', 'prompt', 'status')} for q in practice['questions']]}
+        return result
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel_job(job_id: str):
@@ -442,8 +448,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                     raise HTTPException(400, 'Index the original request materials with the current embedding model before retrying.')
             return dispatch(row["kind"], row["material_id"], row["params"])
 
-    @app.post("/api/quizzes", status_code=202)
-    def generate(params: QuizRequest):
+    def create_quiz(params: QuizRequest, mistake_practice=None):
         with mutation_lock:
             if not os.getenv("OPENAI_API_KEY") and isinstance(engine.ai, AI):
                 raise HTTPException(400, "Configure OPENAI_API_KEY in the local .env file and restart the app.")
@@ -469,6 +474,14 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                     'sections': [s['heading'] for s in parent.get('sections', [])]}
             resolved['retrievalQuery'] = ((resolved['followupContext']['request'] + '\nFollow-up: ') if parent else '') + params.prompt
             mids = engine.retriever.snapshot(cid)
+            if mistake_practice:
+                wanted = mistake_practice['materialIds']
+                if not set(wanted) <= set(mids):
+                    raise HTTPException(400, 'Process and index the selected questions’ lecture materials before practicing mistakes.')
+                mids = [mid for mid in mids if mid in wanted]
+                resolved['mistakePractice'] = mistake_practice
+                resolved['followupContext']['request'] = params.prompt
+                resolved['retrievalQuery'] = '\n'.join(q['prompt'][:500] for q in mistake_practice['questions'])
             if not mids:
                 raise HTTPException(400, 'Process and index at least one lecture in this collection before generating a quiz.')
             if store.one("SELECT id FROM jobs WHERE kind='quiz' AND status IN ('queued','running') AND json_extract(params,'$.collectionId')=?", (cid,)):
@@ -477,10 +490,19 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             resolved['submitted'] = params.model_dump(exclude_none=True)
             return dispatch('quiz', mids[0], resolved)
 
+    @app.post('/api/quizzes', status_code=202)
+    def generate(params: QuizRequest):
+        return create_quiz(params)
+
+    register_mistake_routes(app, store, engine, create_quiz, QuizRequest, require_collection, mutation_lock)
+
     study_agent.routes(app, lambda params: generate(QuizRequest(**params)), retry_job, require_collection, mutation_lock)
 
     @app.get("/api/quizzes")
-    def quizzes(collectionId: str | None = None):
+    def quizzes(collectionId: str | None = None, groupId: str | None = None):
+        if groupId:
+            if not CURRENT_USER.get():raise HTTPException(401, 'Sign in to continue.')
+            groups.member(groupId)
         values = (collectionId,) if collectionId else ()
         where = ' WHERE NOT EXISTS (SELECT 1 FROM quiz_removals r WHERE r.quiz_id=q.id)'
         if collectionId:
@@ -488,8 +510,9 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
         if auth_required:
             where += (' AND ' if where else ' WHERE ') + 'qc.collection_id IN (SELECT collection_id FROM collection_owners WHERE user_id=?)'
             values += (CURRENT_USER.get()['id'],)
-        rows = store.all('SELECT q.*,qc.collection_id,c.name AS source_title FROM quizzes q '
-                         'JOIN quiz_collections qc ON qc.quiz_id=q.id JOIN collections c ON c.id=qc.collection_id'+where+' ORDER BY q.created DESC', values)
+        eligibility=',EXISTS(SELECT 1 FROM group_sets gs WHERE gs.group_id=? AND gs.original_quiz_id=q.id) AS already_shared' if groupId else ''
+        rows = store.all('SELECT q.*,qc.collection_id,c.name AS source_title'+eligibility+' FROM quizzes q '
+                         'JOIN quiz_collections qc ON qc.quiz_id=q.id JOIN collections c ON c.id=qc.collection_id'+where+' ORDER BY q.created DESC', ((groupId,)+values) if groupId else values)
         return {'quizzes': [{'id': r['id'], 'materialId': r['material_id'], 'collectionId': r['collection_id'],
                  'title': json.loads(r['body'])['title'], 'format': json.loads(r['body'])['format'],
                  'questionCount': len(json.loads(r['body'])['questions']),
@@ -498,7 +521,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                                       and (a.get('reviewed') or a.get('revealed'))))
                                       for a in json.loads(r['progress']).get('answers', {}).values()),
                  'sourceTitle': r['source_title'], 'created': r['created'],
-                 'request': store.quiz_request(r['id'])} for r in rows]}
+                 'request': store.quiz_request(r['id']),
+                 **({'alreadyShared': bool(r['already_shared'])} if groupId else {})} for r in rows]}
 
     @app.get("/api/quizzes/{quiz_id}")
     def quiz(quiz_id: str):
