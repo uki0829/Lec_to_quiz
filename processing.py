@@ -331,25 +331,61 @@ class Engine:
                  'coverage': {'mode': 'whole_lecture', 'chunkCount': len(sources),
                               'sourceCount': len({s['originalSourceId'] for s in sources}),
                               'materialCount': len({s['materialId'] for s in sources})}}
-        sheet = self.store.add_quiz(material_id, sheet)
+        sheet = self.store.add_quiz(material_id, {**sheet, 'grounding': 'lecture'}, cid)
         with self.store.connect() as db:
             db.execute('UPDATE requests SET quiz_id=? WHERE job_id=?', (sheet['id'], job_id))
             db.executemany('INSERT OR IGNORE INTO quiz_sources VALUES(?,?)',
                            [(sheet['id'], s['source']['id']) for s in sections])
         return {'status': 'ready', 'quizId': sheet['id']}
 
+    def process_general(self, job_id, params, reason):
+        self.stage(job_id, 'Creating practice from your request', 1, 3)
+        request = self.store.one('SELECT resolved FROM requests WHERE job_id=?', (job_id,))
+        if request:
+            self.store.execute('UPDATE requests SET resolved=? WHERE job_id=?',
+                (json.dumps({**json.loads(request['resolved']), 'grounding': 'general', 'fallbackReason': reason}), job_id))
+        feedback = ''
+        for attempt in range(2):
+            self.check(job_id)
+            raw = self.ai.generate_general(params, feedback)
+            self.check(job_id)
+            self.stage(job_id, 'Checking your study set', 2, 3)
+            try:
+                quiz = validate_quiz(raw, [], params['format'], params['count'], general=True)
+                previous = {normalize(q) for q in params.get('followupContext', {}).get('questions', [])}
+                if any(normalize(q['prompt']) in previous for q in quiz.get('questions', [])):
+                    raise ValueError('Generate different questions from the previous set.')
+                if params.get('mistakePractice') and quiz['status'] == 'ready':
+                    if any(near_repeat(q['prompt'], params.get('followupContext', {}).get('questions', [])) for q in quiz['questions']):
+                        raise ValueError('Use a new scenario to test the selected mistake concepts, not a paraphrase.')
+                    review = self.ai.review_mistake_practice(quiz['questions'], params['mistakePractice']['questions'])
+                    self.check(job_id)
+                    if review.get('status') != 'ready':
+                        raise ValueError('Keep every question focused on the selected mistakes: ' + review.get('message', ''))
+                break
+            except ValueError as exc:
+                if attempt:
+                    raise ValueError('The generated study set failed validation: ' + str(exc)) from exc
+                feedback = json.dumps({'error': str(exc), 'previousAttempt': raw})
+        if quiz['status'] != 'ready':
+            return {'status': quiz['status'], 'message': quiz['message']}
+        self.check(job_id)
+        quiz = self.store.add_quiz('', {**quiz, 'format': params['format'], 'grounding': 'general'}, params['collectionId'])
+        self.store.execute('UPDATE requests SET quiz_id=? WHERE job_id=?', (quiz['id'], job_id))
+        return {'status': 'ready', 'quizId': quiz['id']}
+
     def process_quiz(self, job_id, material_id, params):
-        if params['format'] == 'cheatsheet':
+        if params['format'] == 'cheatsheet' and not params.get('allowGeneral'):
             return self.process_sheet(job_id, material_id, params)
         self.stage(job_id, "Searching your study collection", 0, 4)
         cid = params.get('collectionId') or self.store.collection_for(material_id)
-        mids = params.get('materialSnapshot') or [material_id]
+        mids = params.get('materialSnapshot', [material_id] if material_id else [])
         query = params['prompt']
         if params.get('mistakePractice'):
             query = params['retrievalQuery']
         elif params.get('followupContext'):
             query = params['followupContext']['request'] + '\nFollow-up: ' + query
-        sources = self.retriever.search(cid, mids, query, lambda: self.check(job_id))
+        sources = self.retriever.search(cid, mids, query, lambda: self.check(job_id)) if mids else []
         if self.reranker.api_key and sources:
             self.stage(job_id, "Ranking lecture passages", 1, 4)
         sources, ranking = self.reranker.rank(query, sources, lambda: self.check(job_id))
@@ -368,6 +404,8 @@ class Engine:
         self.store.execute('UPDATE requests SET snapshot=? WHERE job_id=?',
                            (json.dumps([{'chunkId': s['id'], 'sourceId': s['originalSourceId'], 'materialId': s['materialId']} for s in sources]), job_id))
         if not sources:
+            if params.get('allowGeneral'):
+                return self.process_general(job_id, params, 'no_indexed_sources')
             return {'status': 'insufficient_source', 'message': 'No indexed lecture content is available. Add or index materials first.'}
         self.stage(job_id, "Selecting relevant lecture sections", 1, 4)
         selection_request = query
@@ -378,12 +416,16 @@ class Engine:
         selection = self.ai.select(selection_request, sources)
         self.check(job_id)
         if selection["status"] != "ready":
+            if selection['status'] == 'insufficient_source' and params.get('allowGeneral'):
+                return self.process_general(job_id, params, 'no_relevant_sources')
             return {"status": selection["status"], "message": selection["message"]}
         selected_ids = selection["sourceIds"]
         mapping = {s["id"]: s for s in sources}
         if not selected_ids or len(selected_ids) > 12 or not set(selected_ids) <= set(mapping):
             raise ValueError("The model selected invalid source references. Narrow the topic and retry.")
         chosen = [mapping[s] for s in dict.fromkeys(selected_ids)]
+        if params['format'] == 'cheatsheet':
+            return self.process_sheet(job_id, material_id, params)
         self.stage(job_id, "Building your cheat sheet" if params['format'] == 'cheatsheet' else "Building your quiz", 2, 4)
         feedback = ""
         attempts = 3 if params.get('mistakePractice') else 2
@@ -422,7 +464,7 @@ class Engine:
         if quiz["status"] != "ready":
             return {"status": quiz["status"], "message": quiz["message"]}
         self.check(job_id)
-        quiz = self.store.add_quiz(material_id, {**quiz, "format": params["format"]})
+        quiz = self.store.add_quiz(material_id, {**quiz, "format": params["format"], 'grounding': 'lecture'}, cid)
         with self.store.connect() as db:
             db.execute('UPDATE requests SET quiz_id=? WHERE job_id=?', (quiz['id'], job_id))
             items = quiz.get('sections', []) if params['format'] == 'cheatsheet' else quiz['questions']

@@ -59,11 +59,11 @@
 .flash-star{width:46px;padding:11px;border-radius:50%}
 .flash-star.is-starred{background:#fff0bb;color:#806219}
 .flash-star.is-starred .icon{filter:invert(45%) sepia(60%) saturate(650%) hue-rotate(5deg);opacity:1}
-.flash-flip{display:flex;align-items:center;justify-content:center;width:100%;min-height:350px;padding:35px 55px 60px;background:transparent;color:#293348;border-radius:0;font-size:clamp(23px,2.7vw,35px);font-weight:550;line-height:1.55;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere}
+.flash-flip{transform-origin:center;backface-visibility:hidden;display:flex;align-items:center;justify-content:center;width:100%;min-height:350px;padding:35px 55px 60px;background:transparent;color:#293348;border-radius:0;font-size:clamp(23px,2.7vw,35px);font-weight:550;line-height:1.55;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere}
 .flash-flip:hover:not(:disabled){background:#f6f8ff}
 .flash-flip:focus-visible{outline:3px solid #678dce;outline-offset:-7px}
 .flash-flip.answer-face{background:#f3f6ff}
-.flash-card-text{max-width:850px;animation:card-face .16s ease-out}
+.flash-card-text{max-width:850px}
 .flash-hint-text{margin:15px 35px 0;padding:15px 18px;border-radius:12px;background:#eff2fb;border-left:3px solid #778bc4;font-size:14px;line-height:1.75;color:#354661}
 .flash-recall{display:flex;justify-content:center;gap:12px;margin:18px 0 12px}
 .flash-explanation{margin:20px 2px;border:1px solid var(--line);border-radius:12px;padding:15px 18px}
@@ -298,8 +298,8 @@
 .practice-page .flash-hint,.practice-page .flash-star{color:var(--muted)}
 .practice-page .flash-hint .icon,.practice-page .flash-star .icon{filter:brightness(0) invert(1)}
 .practice-page .flash-hint:hover:not(:disabled),.practice-page .flash-star:hover:not(:disabled){background:#34415a}
-.practice-page .flash-star.is-starred{background:#534731;color:#ffe0a1}
-.practice-page .flash-star.is-starred .icon{filter:invert(83%) sepia(33%) saturate(647%) hue-rotate(343deg)}
+.practice-page .flash-star.is-starred{background:#4b422a;color:#facc15}
+.practice-page .flash-star.is-starred .icon{filter:none;opacity:1}
 .practice-page .flash-hint-text{background:#303951;color:#e0e6ff;border-color:#aaa0ef}
 .practice-page .study-topbar .secondary:hover:not(:disabled),.practice-page .study-footer .secondary:hover:not(:disabled),.practice-page .flash-recall .secondary:hover:not(:disabled){background:#35425a;border-color:#738dad}
 .practice-page .study-footer .primary:hover:not(:disabled){background:#c6e2ff}

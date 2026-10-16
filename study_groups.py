@@ -25,12 +25,16 @@ class ShareQuiz(BaseModel):
 def snapshot(quiz):
     # Share only learning content, never the owner's requests, progress, or raw files.
     body = {k:quiz[k] for k in ('title','description','format','questions','sections') if k in quiz}
+    if quiz.get('grounding') == 'general':
+        body['grounding'] = 'general'
     body = json.loads(json.dumps(body))
     for q in body.get('questions',[]) + body.get('sections',[]):
         for key in ('hint','starred','originQuizId','originQuestionId','hintLoading','starLoading'):
             q.pop(key,None)
         source = q.get('source',{})
         q['source'] = {k:source[k] for k in ('name','locator','quote') if k in source}
+        if source.get('kind') == 'general':
+            q['source']['kind'] = 'general'
     return body
 
 

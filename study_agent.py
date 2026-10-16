@@ -90,7 +90,7 @@ class StudyAgent:
                     sources = {item['source']['id']: {k: item['source'][k] for k in ('id', 'name', 'locator')}
                                for item in items if item.get('source', {}).get('id')}
                     message['set'] = {'id': quiz['id'], 'title': quiz['title'], 'format': quiz['format'],
-                                      'count': len(items), 'sources': list(sources.values())}
+                                      'count': len(items), 'sources': list(sources.values()), 'grounding': quiz.get('grounding', 'lecture')}
                 else:
                     message.update(state='removed', text='This study set was removed.', quizId=None, jobId=None)
             result.append(message)
@@ -127,44 +127,41 @@ class StudyAgent:
                          'planning', None, None, request.requestId, now+.0001))
             try:
                 mids = self.engine.retriever.snapshot(cid)
-                if not mids:
-                    self.update(ident, 'clarify', {'text': 'Add lecture material to this folder first.'})
+                history = self.history(cid)
+                previous = None
+                for item in reversed(history):
+                    if item.get('set'):
+                        previous = self.store.quiz(item['set']['id'])
+                        break
+                previous_context = None
+                if previous:
+                    settings = (previous.get('request') or {}).get('resolved') or {}
+                    previous_context = {'title': previous['title'], 'prompt': settings.get('prompt', previous['title']),
+                        'format': previous['format'], 'count': settings.get('count', 6),
+                        'difficulty': settings.get('difficulty', 'intermediate')}
+                materials = [{'name': self.store.material(mid)['title']} for mid in mids]
+                conversation = [{'role': m['role'], 'text': m['text'][:1600]} for m in history[-12:-2]]
+                plan = AgentPlan.model_validate(self.engine.ai.plan_study(text, conversation, materials, previous_context))
+                if len(plan.message) > 2000 or len(plan.prompt) > 4000:
+                    raise ValueError('The agent request was too long. Please shorten it.')
+                if plan.action == 'clarify':
+                    self.update(ident, 'clarify', {'text': plan.message})
                 else:
-                    history = self.history(cid)
-                    previous = None
-                    for item in reversed(history):
-                        if item.get('set'):
-                            previous = self.store.quiz(item['set']['id'])
-                            break
-                    previous_context = None
-                    if previous:
-                        settings = (previous.get('request') or {}).get('resolved') or {}
-                        previous_context = {'title': previous['title'], 'prompt': settings.get('prompt', previous['title']),
-                            'format': previous['format'], 'count': settings.get('count', 6),
-                            'difficulty': settings.get('difficulty', 'intermediate')}
-                    materials = [{'name': self.store.material(mid)['title']} for mid in mids]
-                    conversation = [{'role': m['role'], 'text': m['text'][:1600]} for m in history[-12:-2]]
-                    plan = AgentPlan.model_validate(self.engine.ai.plan_study(text, conversation, materials, previous_context))
-                    if len(plan.message) > 2000 or len(plan.prompt) > 4000:
-                        raise ValueError('The agent request was too long. Please shorten it.')
-                    if plan.action == 'clarify':
-                        self.update(ident, 'clarify', {'text': plan.message})
-                    else:
-                        if not plan.prompt.strip():
-                            raise ValueError('The agent needs a topic for this study set.')
-                        with mutation_lock:
-                            require_collection(cid)
-                            inherited = previous_context if plan.buildOnPrevious and previous else {}
-                            params = {'collectionId': cid, 'prompt': plan.prompt,
-                                      'format': plan.format or inherited.get('format', 'mcq'),
-                                      'count': plan.count or inherited.get('count', 6),
-                                      'difficulty': plan.difficulty or inherited.get('difficulty', 'intermediate')}
-                            if plan.buildOnPrevious and previous:
-                                params['parentQuizId'] = previous['id']
-                            job = make_quiz(params)
-                            self.original_request(job['jobId'], text)
-                            self.update(ident, 'pending', {'text': plan.message or 'Creating your study set.', 'request': text},
-                                        job_id=job['jobId'])
+                    if not plan.prompt.strip():
+                        raise ValueError('The agent needs a topic for this study set.')
+                    with mutation_lock:
+                        require_collection(cid)
+                        inherited = previous_context if plan.buildOnPrevious and previous else {}
+                        params = {'collectionId': cid, 'prompt': plan.prompt,
+                                  'format': plan.format or inherited.get('format', 'mcq'),
+                                  'count': plan.count or inherited.get('count', 6),
+                                  'difficulty': plan.difficulty or inherited.get('difficulty', 'intermediate')}
+                        if plan.buildOnPrevious and previous:
+                            params['parentQuizId'] = previous['id']
+                        job = make_quiz(params)
+                        self.original_request(job['jobId'], text)
+                        self.update(ident, 'pending', {'text': plan.message or 'Creating your study set.', 'request': text},
+                                    job_id=job['jobId'])
             except Exception as exc:
                 self.update(ident, 'failed', {'text': str(exc) if isinstance(exc, ValueError) else
                     (str(exc.detail) if isinstance(exc, HTTPException) else 'The agent could not complete this request. Try again.'), 'request': text})

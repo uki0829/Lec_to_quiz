@@ -253,12 +253,12 @@ class Store:
         self.execute("UPDATE jobs SET " + ",".join(k + "=?" for k in updates) + " WHERE id=?",
                      (*updates.values(), job_id))
 
-    def add_quiz(self, material_id, quiz):
+    def add_quiz(self, material_id, quiz, collection_id=None):
         quiz_id = uid()
         quiz = {**quiz, "id": quiz_id, "materialId": material_id, "mode": "generated"}
         self.execute("INSERT INTO quizzes(id,material_id,body,created) VALUES(?,?,?,?)",
                      (quiz_id, material_id, json.dumps(quiz), time.time()))
-        self.execute('INSERT INTO quiz_collections VALUES(?,?)', (quiz_id, self.collection_for(material_id)))
+        self.execute('INSERT INTO quiz_collections VALUES(?,?)', (quiz_id, collection_id or self.collection_for(material_id)))
         return quiz
 
     def quiz(self, quiz_id):

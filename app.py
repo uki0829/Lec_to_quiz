@@ -128,7 +128,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
     def dispatch(kind, material_id, params=None):
         if kind == 'quiz' and store.one("SELECT id FROM jobs WHERE kind='quiz' AND status IN ('queued','running') AND json_extract(params,'$.collectionId')=?", (params['collectionId'],)):
             raise HTTPException(409, 'This collection already has an active quiz job.')
-        if store.one("SELECT id FROM jobs WHERE material_id=? AND status IN ('queued','running')", (material_id,)):
+        if material_id and store.one("SELECT id FROM jobs WHERE material_id=? AND status IN ('queued','running')", (material_id,)):
             raise HTTPException(409, "This material already has an active job. Wait or cancel it first.")
         job_id = store.add_job(kind, material_id, params)
         if kind == 'quiz':
@@ -437,18 +437,20 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             raise HTTPException(409, "Only stopped or failed jobs can be retried.")
         with mutation_lock:
             row = store.job(job_id)
-            if not row or not store.material(row['material_id']):
+            if not row or (row['material_id'] and not store.material(row['material_id'])):
                 raise HTTPException(404, 'The job or its material was deleted.')
+            if row['params'].get('allowGeneral'):
+                require_collection(row['params']['collectionId'])
             if row['kind'] == 'quiz':
                 mids = row['params'].get('materialSnapshot', [])
-                if not mids or not all(store.material(mid) for mid in mids):
+                if (not mids and not row['params'].get('allowGeneral')) or not all(store.material(mid) for mid in mids):
                     raise HTTPException(400, 'A source from this request was deleted. Start a new quiz request.')
                 # Refresh explicit model-change state without silently mixing vector models.
                 if not all(engine.retriever.is_ready(mid) for mid in mids):
                     raise HTTPException(400, 'Index the original request materials with the current embedding model before retrying.')
             return dispatch(row["kind"], row["material_id"], row["params"])
 
-    def create_quiz(params: QuizRequest, mistake_practice=None):
+    def create_quiz(params: QuizRequest, mistake_practice=None, allow_general=False):
         with mutation_lock:
             if not os.getenv("OPENAI_API_KEY") and isinstance(engine.ai, AI):
                 raise HTTPException(400, "Configure OPENAI_API_KEY in the local .env file and restart the app.")
@@ -462,6 +464,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             inherited = (parent.get('request') or {}).get('resolved', {}) if parent else {}
             resolved = params.model_dump(exclude_none=True)
             resolved['collectionId'] = cid
+            if allow_general:
+                resolved['allowGeneral'] = True
             for field, default in [('format','mcq'), ('count',6), ('difficulty','intermediate')]:
                 resolved[field] = resolved.get(field, inherited.get(field, default))
             if resolved['format'] not in ('mcq','flashcard','calculation','cheatsheet') or resolved['count'] not in (4,6,8,10):
@@ -482,13 +486,13 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                 resolved['mistakePractice'] = mistake_practice
                 resolved['followupContext']['request'] = params.prompt
                 resolved['retrievalQuery'] = '\n'.join(q['prompt'][:500] for q in mistake_practice['questions'])
-            if not mids:
+            if not mids and not allow_general:
                 raise HTTPException(400, 'Process and index at least one lecture in this collection before generating a quiz.')
             if store.one("SELECT id FROM jobs WHERE kind='quiz' AND status IN ('queued','running') AND json_extract(params,'$.collectionId')=?", (cid,)):
                 raise HTTPException(409, 'This collection already has an active quiz job.')
             resolved['materialSnapshot'] = mids
             resolved['submitted'] = params.model_dump(exclude_none=True)
-            return dispatch('quiz', mids[0], resolved)
+            return dispatch('quiz', '' if allow_general else mids[0], resolved)
 
     @app.post('/api/quizzes', status_code=202)
     def generate(params: QuizRequest):
@@ -496,7 +500,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
 
     register_mistake_routes(app, store, engine, create_quiz, QuizRequest, require_collection, mutation_lock)
 
-    study_agent.routes(app, lambda params: generate(QuizRequest(**params)), retry_job, require_collection, mutation_lock)
+    study_agent.routes(app, lambda params: create_quiz(QuizRequest(**params), allow_general=True), retry_job, require_collection, mutation_lock)
 
     @app.get("/api/quizzes")
     def quizzes(collectionId: str | None = None, groupId: str | None = None):
@@ -611,9 +615,9 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
                 return {'hint': cached['hint'], 'cached': True}
             sid = question['source'].get('id')
             row = store.one('SELECT body FROM sources WHERE id=?', (sid,))
-            if not row:
+            if not row and question['source'].get('kind') != 'general':
                 raise HTTPException(404, 'The lecture source is no longer available.')
-            source = json.loads(row['body'])
+            source = json.loads(row['body']) if row else {'text': question['explanation'], 'uncertainty': '', 'name': 'General knowledge'}
         try:
             hint = ''
             for attempt in range(2):

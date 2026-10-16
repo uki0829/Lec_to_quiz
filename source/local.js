@@ -111,7 +111,7 @@ function renderQuizGrid(){
   $('#new-set-card')?.addEventListener('click',()=>openComposer());
 }
 async function refreshCollection() {
-  if(!collectionId){currentCollection=null;savedSets=[];bankRows=[];bankKey='';renderQuestionBank();renderedMaterialsKey='';renderedQuizzesKey='';$('#library-title').textContent='Create new';$('#collection-breadcrumb').textContent='Collections';$('#collection-overview').textContent='Create a study folder.';$('#collection-materials').innerHTML='<p class="empty-results">Create a study folder.</p>';$('#materials-count').textContent='0';$('#saved-quizzes').innerHTML='<option value="">Choose a set</option>';$('#composer-parent').innerHTML='<option value="">No previous set</option>';renderQuizGrid();updateComposerState();return;}
+  if(!collectionId){currentCollection=null;savedSets=[];bankRows=[];bankKey='';renderQuestionBank();renderedMaterialsKey='';renderedQuizzesKey='';$('#library-title').textContent='Create new';$('#collection-breadcrumb').textContent='Collections';$('#collection-overview').textContent='Create a study folder.';$('#collection-materials').innerHTML='';$('#materials-count').textContent='0';$('#saved-quizzes').innerHTML='<option value="">Choose a set</option>';$('#composer-parent').innerHTML='<option value="">No previous set</option>';renderQuizGrid();updateComposerState();return;}
   const cid=collectionId;const [c,saved,bank]=await Promise.all([api('/api/collections/'+cid),api('/api/quizzes?collectionId='+encodeURIComponent(cid)),api('/api/collections/'+cid+'/question-bank')]);
   if(cid!==collectionId)return;currentCollection=c;savedSets=saved.quizzes;bankRows=bank.questions;const newBankKey=JSON.stringify(bankRows);if(newBankKey!==bankKey){bankKey=newBankKey;renderQuestionBank();syncCardStar();}
   $('#library-title').textContent='Create new';$('#collection-breadcrumb').textContent=c.name;
@@ -120,7 +120,7 @@ async function refreshCollection() {
   $('#materials-count').textContent=c.materials.length;
   const materialsKey=cid+JSON.stringify(c.materials);
   if(materialsKey!==renderedMaterialsKey){renderedMaterialsKey=materialsKey;
-    $('#collection-materials').innerHTML=c.materials.map(m=>'<article class="material-card" draggable="true" tabindex="0" data-drag-material="'+esc(m.id)+'" aria-label="'+esc(m.title)+'" aria-keyshortcuts="Delete" aria-description="Drag to the trash to delete. Press Delete for keyboard controls." data-material-title="'+esc(m.title.toLowerCase())+'"><div class="material-title">'+icon('file-text')+'<strong>'+esc(m.title)+'</strong></div><div class="material-state">'+esc(m.searchReady?'Ready for practice':m.status==='ready'?'Indexing: '+(m.jobStatus||'pending'):m.status)+' · '+m.sourceCount+' source sections</div><div class="material-actions"><button class="quiet" data-view="'+esc(m.id)+'">'+icon('book-open')+'View sources</button>'+(!m.searchReady?'<button class="quiet" data-process="'+esc(m.id)+'">'+icon('rotate-ccw')+(['queued','running'].includes(m.jobStatus)?'Check progress':'Process / retry')+'</button>':'')+'</div></article>').join('')||'<p class="empty-results">Add your first lecture.</p>';
+    $('#collection-materials').innerHTML=c.materials.map(m=>'<article class="material-card" draggable="true" tabindex="0" data-drag-material="'+esc(m.id)+'" aria-label="'+esc(m.title)+'" aria-keyshortcuts="Delete" aria-description="Drag to the trash to delete. Press Delete for keyboard controls." data-material-title="'+esc(m.title.toLowerCase())+'"><div class="material-title">'+icon('file-text')+'<strong>'+esc(m.title)+'</strong></div><div class="material-state">'+esc(m.searchReady?'Ready for practice':m.status==='ready'?'Indexing: '+(m.jobStatus||'pending'):m.status)+' · '+m.sourceCount+' source sections</div><div class="material-actions"><button class="quiet" data-view="'+esc(m.id)+'">'+icon('book-open')+'View sources</button>'+(!m.searchReady?'<button class="quiet" data-process="'+esc(m.id)+'">'+icon('rotate-ccw')+(['queued','running'].includes(m.jobStatus)?'Check progress':'Process / retry')+'</button>':'')+'</div></article>').join('');
     $('#collection-materials').querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>loadMaterial(b.dataset.view).catch(err=>message(err.message,true)));
     $('#collection-materials').querySelectorAll('[data-process]').forEach(b=>b.onclick=()=>resumeMaterial(b.dataset.process));
     if(typeof bindMaterialDrag==='function')$('#collection-materials').querySelectorAll('[data-drag-material]').forEach(bindMaterialDrag);
@@ -213,7 +213,24 @@ async function removeMaterial(id,expectedCollectionId=collectionId) {
     saveSnapshot();await refreshLibrary();message('Material and dependent quizzes removed.');
   }catch(err){message(err.message,true);}
 }
-function showJob(job) {$('#job-panel').hidden=false;const fraction=job.total?Math.min(1,job.completed/job.total):null;$('#job-status').innerHTML='<span>'+esc(['failed','cancelled','interrupted'].includes(job.status)?friendlyJobError(job):job.stage)+'</span>'+(fraction!==null?'<progress class="job-meter" value="'+fraction+'" max="1" aria-label="Processing progress"></progress><span class="tiny">'+job.completed+' of '+job.total+' units</span>':'');$('#composer-job-status').innerHTML=$('#job-status').innerHTML;if(typeof syncMistakeJob==='function')syncMistakeJob(job);}
+function showJob(job) {
+  $('#job-panel').hidden=false;
+  const stopped=['failed','cancelled','interrupted'].includes(job.status);
+  const fraction=job.total?Math.max(0,Math.min(1,job.completed/job.total)):null;
+  const meter='<progress class="job-meter"'+(fraction!==null?' value="'+fraction+'"':'')+' max="1" aria-label="Processing progress"></progress>';
+  const label=stopped?'<span>'+esc(friendlyJobError(job))+'</span>':job.kind==='quiz'?'<span>'+esc(job.stage)+'</span>':'';
+  $('#job-status').innerHTML=label+(!stopped?meter:'');
+  $('#composer-job-status').innerHTML=$('#job-status').innerHTML;
+  if(typeof syncMistakeJob==='function')syncMistakeJob(job);
+}
+function clearUploadStatus(){
+  message('');
+  if(activeJob)return;
+  lastFailedJob=null;$('#job-panel').hidden=true;$('#job-panel').classList.remove('failed');
+  $('#job-status').innerHTML='';$('#composer-job-status').innerHTML='';
+  $('#job-actions').hidden=true;
+}
+
 function pause(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function watchJob(jobId) {
   const token=++pollToken;activeJob=jobId;lastFailedJob=null;$('#retry-job').hidden=true;setBusy(true);saveSnapshot();
@@ -246,7 +263,7 @@ async function ensureMaterial(forComposer=false) {
   if(!collectionId&&!forComposer)throw Error('Create or choose a study folder.');
   const notes=(forComposer?$('#composer-notes').value:$('#notes').value).trim();if(!notes&&!attachments.length)throw Error('Choose lecture files or paste new notes to add.');
   const body=new FormData();body.append('notes',notes);if(collectionId)body.append('collectionId',collectionId);attachments.forEach(f=>body.append('files',f));
-  setBusy(true);$('#job-status').textContent='Uploading your lecture…';$('#composer-job-status').textContent='Uploading your lecture…';
+  setBusy(true);showJob({kind:'material',status:'running',total:0,completed:0});
   const result=await api('/api/materials',{method:'POST',body});materialId=result.materialId;materialDirty=false;
   // Uploads are durable before extraction starts; retries reuse this material.
   if(forComposer){composerMaterialId=result.materialId;composerJobId=result.jobId;composerReady=false;composerLoadedTitle=attachments.map(f=>f.name).join(', ')||'Pasted lecture notes';}
@@ -321,7 +338,7 @@ function applyToast(text,error){
   for(const id of ['composer-message','upload-message']){const el=$('#'+id);el.className=text?'notice'+(error?' error':''):'';el.textContent=text;}
   if(text&&!error)toastTimer=setTimeout(()=>{for(const id of ['setup-message','composer-message','upload-message'])$('#'+id).textContent='';},7000);
 }
-function showView(view){if(view!=='library'&&typeof endSetDrag==='function')endSetDrag();if(view!=='study'){cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#agent-view'))$('#agent-view').hidden=view!=='agent';if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='library'?'page':'false');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if($('#nav-agent'))$('#nav-agent').setAttribute('aria-current',view==='agent'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='agent'&&typeof syncAgentState==='function')syncAgentState();if(view==='study')fitQuizStage();}
+function showView(view){if(view!=='library'&&typeof endSetDrag==='function')endSetDrag();if(view!=='study'){cancelFlashFlip();cancelQuizAdvance();closeQuizExplanation();}currentView=view;if($('#agent-view'))$('#agent-view').hidden=view!=='agent';if($('#groups-view'))$('#groups-view').hidden=view!=='groups';$('#library-view').hidden=view!=='library';$('#study-view').hidden=view!=='study';if($('#nav-home'))$('#nav-home').setAttribute('aria-current',view==='library'?'page':'false');if($('#nav-groups'))$('#nav-groups').setAttribute('aria-current',view==='groups'?'page':'false');if($('#nav-agent'))$('#nav-agent').setAttribute('aria-current',view==='agent'?'page':'false');if(typeof syncPracticePage==='function')syncPracticePage(view);if(view==='agent'&&typeof syncAgentState==='function')syncAgentState();if(view==='study')fitQuizStage();}
 function filterMaterials(){
   const search=$('#search-sets').value.trim().toLowerCase();
   const cards=Array.from($('#collection-materials').querySelectorAll('[data-material-title]'));
@@ -341,23 +358,24 @@ function setLibraryTab(tab){
 }
 
 function cardOrigin(q){return {quizId:q.originQuizId||quiz?.id,questionId:q.originQuestionId||q.id};}
-function isQuestionStarred(q){const origin=cardOrigin(q);const found=bankRows.some(row=>row.originQuizId===origin.quizId&&row.originQuestionId===origin.questionId);return currentCollection&&quiz?.collectionId===collectionId?found:found||Boolean(q.starred);}
+function isQuestionStarred(q){if(typeof q.starPending==='boolean')return q.starPending;const origin=cardOrigin(q);const found=bankRows.some(row=>row.originQuizId===origin.quizId&&row.originQuestionId===origin.questionId);return currentCollection&&quiz?.collectionId===collectionId?found:found||Boolean(q.starred);}
 function syncCardStar(){
   const q=quiz?.questions?.[index],button=$('#flash-star');if(!q||!button)return;
   const starred=isQuestionStarred(q);button.setAttribute('aria-pressed',String(starred));button.setAttribute('aria-label',starred?'Unstar card':'Star card');button.classList.toggle('is-starred',starred);const img=button.querySelector?.('img');if(img)img.src='/static/icons/'+(starred?'star-filled':'star')+'.svg';
 }
 async function toggleQuestionStar(q){
   const origin=cardOrigin(q);if(!origin.quizId||q.starLoading)return;
+  const wasStarred=isQuestionStarred(q);q.starPending=!wasStarred;
   q.starLoading=true;const visibleQuiz=quiz;render();
   try{
     const result=await api('/api/quizzes/'+origin.quizId+'/questions/'+origin.questionId+'/star',{
-      method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({starred:!isQuestionStarred(q)})});
+      method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({starred:!wasStarred})});
     q.starred=result.starred;
     bankRows=bankRows.filter(row=>!(row.originQuizId===origin.quizId&&row.originQuestionId===origin.questionId));
     if(result.starred)bankRows.unshift({...q,originQuizId:origin.quizId,originQuestionId:origin.questionId,quizTitle:visibleQuiz.title});
     renderQuestionBank();saveSnapshot();
   }catch(err){message(err.message,true);}
-  finally{q.starLoading=false;if(quiz===visibleQuiz&&quiz.questions[index]===q)render();}
+  finally{delete q.starPending;q.starLoading=false;if(quiz===visibleQuiz&&quiz.questions[index]===q)render();}
 }
 async function requestFlashcardHint(q){
   if(q.hintLoading)return;
@@ -429,7 +447,7 @@ function openComposer(type=null,followup=false){
   if(!followup){parentQuizId=null;parentQuizTitle='';updateFollowup();}
   else if(currentCollection?.materials.some(m=>m.searchReady)){composerStep='options';composerReady=true;composerLoadedTitle='Your saved lectures';}
   for(const id of ['upload-dialog','material-dialog'])if($('#'+id).open)$('#'+id).close();
-  message('');$('#composer-collection').value=collectionId||'';$('#composer-parent').value=parentQuizId||'';updateComposerState();
+  clearUploadStatus();$('#composer-collection').value=collectionId||'';$('#composer-parent').value=parentQuizId||'';updateComposerState();
   $('#composer-title').textContent=type==='flashcard'?'Create flashcards':type==='calculation'?'Create calculation practice':type==='mcq'?'Create a quiz':type==='cheatsheet'?'Create cheat sheet':'Create study set';
   if(!$('#composer-dialog').open)$('#composer-dialog').showModal();
   $(composerStep==='upload'?'#composer-files':'#request').focus();saveSnapshot();
@@ -438,7 +456,7 @@ function openUpload(){
   if(busy)return;
   if(!collectionId){pendingEntry={kind:'upload'};collectionDialog('create');return;}
   if($('#composer-dialog').open)$('#composer-dialog').close();
-  message('');$('#upload-collection').textContent='Study folder: '+folderName(currentCollection.name);
+  clearUploadStatus();$('#upload-collection').textContent='Study folder: '+folderName(currentCollection.name);
   $('#upload-dialog').showModal();
 }
 async function openQuiz(id){try{const q=validateImported(await api('/api/quizzes/'+id));startQuiz(q);if(q.progress?.review)showSummary();saveSnapshot();window.scrollTo({top:0,behavior:'smooth'});}catch(err){message(err.message,true);}}

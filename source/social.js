@@ -31,7 +31,7 @@ async function enterSession(user){
 async function startSession(){
   try{const state=await api('/api/auth/me');if(state.user){await enterSession(state.user);return;}
     showSignIn();const error=new URLSearchParams(location.search).get('authError');
-    if(error)$('#auth-error').textContent=({'google-setup':'Google sign-in needs setup. Use email or demo.','google-link':'Sign in with email first to link Google.','google-signin':'Google sign-in could not complete. Try again.'})[error]||'Sign-in could not complete.';
+    if(error)$('#auth-error').textContent=({'google-setup':'Google sign-in configuration needs updating.','google-link':'Sign in with email first to link Google.','google-signin':'Google sign-in could not complete. Try again.','google-network':'Could not reach Google. Please try signing in again.','google-session':'Sign-in expired or was opened twice. Start Google sign-in again from this tab.','google-retry':'Google could not complete this attempt. Start sign-in again.','google-verify':'Could not verify Google sign-in. Please try again.'})[error]||'Sign-in could not complete.';
   }catch(err){showSignIn();$('#auth-error').textContent=err.message;}
 }
 $('#auth-mode').onclick=()=>setAuthMode(authMode==='login'?'register':'login');

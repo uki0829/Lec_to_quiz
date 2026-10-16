@@ -22,10 +22,10 @@ function syncAgentState(){
   const locked=busy||agentSending||pending;
   $('#agent-collection').disabled=locked;
   $('#agent-input').disabled=locked;
-  $('#agent-send').disabled=locked||!collectionId||!ready||!$('#agent-input').value.trim();
+  $('#agent-send').disabled=locked||!$('#agent-input').value.trim();
   $('#agent-add').disabled=locked;
-  $('#agent-ready').textContent=ready?ready+' lecture'+(ready===1?'':'s')+' ready':'Add lectures to begin';
-  document.querySelectorAll('[data-agent-suggestion]').forEach(b=>b.disabled=locked||!ready);
+  $('#agent-ready').textContent=ready?ready+' lecture'+(ready===1?'':'s')+' ready':'General knowledge available';
+  document.querySelectorAll('[data-agent-suggestion]').forEach(b=>b.disabled=locked);
   if(typeof syncMenus==='function')syncMenus();
 }
 function renderAgentConversation(){
@@ -37,6 +37,7 @@ function renderAgentConversation(){
       const pending=['planning','pending'].includes(m.state),set=m.set;
       let content='<p>'+mathHtml(pending?(m.stage||m.text):m.text)+'</p>';
       if(set){
+        if(set.grounding==='general')content+='<p class="tiny">General knowledge</p>';
         content+='<div class="agent-result"><span class="agent-result-kind">'+flashIcon(formatIcon(set.format))+esc(formatName(set.format))+' · '+set.count+' '+(set.format==='cheatsheet'?'sections':'questions')+'</span><h2>'+mathHtml(set.title)+'</h2><button class="primary" data-agent-open="'+esc(set.id)+'">'+(set.format==='cheatsheet'?'Open guide':'Start practice')+flashIcon('arrow-right')+'</button>'+
           (set.sources.length?'<details class="agent-sources"><summary>'+set.sources.length+' lecture source'+(set.sources.length===1?'':'s')+'</summary>'+set.sources.map(s=>'<button class="agent-source" data-agent-source="'+esc(s.id)+'">'+flashIcon('file-text')+'<span>'+esc(s.name)+'<small>'+esc(s.locator)+'</small></span></button>').join('')+'</details>':'')+'</div>';
       }
@@ -92,11 +93,8 @@ async function watchAgentJob(id){
   }
 }
 async function sendAgentMessage(){
-  const text=$('#agent-input').value.trim(),cid=collectionId;
-  if(!text||!cid||busy||agentSending)return;
-  if(!currentCollection?.materials.some(m=>m.searchReady)){
-    $('#agent-error').textContent='Add lecture material to this folder first.';return;
-  }
+  const text=$('#agent-input').value.trim();let cid=collectionId;
+  if(!text||busy||agentSending)return;
   agentSending=true;agentOwnsBusy=true;$('#agent-error').textContent='';
   if(agentRequestText!==text||!agentRequestKey){
     agentRequestKey=window.crypto?.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -108,6 +106,11 @@ async function sendAgentMessage(){
     {id:'sending-agent',role:'assistant',state:'planning',text:'Understanding your request…'}];
   renderAgentConversation();saveSnapshot();
   try{
+    if(!cid){
+      const folder=await api('/api/collections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Agent practice'})});
+      cid=collectionId=folder.id;agentFolder=cid;
+      await refreshLibrary();
+    }
     const data=await api('/api/collections/'+encodeURIComponent(cid)+'/agent/messages',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,requestId:agentRequestKey})});
     if(cid!==collectionId)return;

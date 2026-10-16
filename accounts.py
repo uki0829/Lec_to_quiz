@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -17,6 +18,7 @@ from storage import uid, CURRENT_USER
 
 COOKIE = 'lecture_lab_session'
 DEMO_USER = 'demo-hefeng'
+logger = logging.getLogger(__name__)
 
 
 def digest(value):
@@ -83,7 +85,7 @@ class Accounts:
                 cid = row['collection_id'] if row else None
             elif kind == 'jobs':
                 row = self.store.job(ident)
-                cid = self.store.collection_for(row['material_id']) if row else None
+                cid = (row['params'].get('collectionId') or self.store.collection_for(row['material_id'])) if row else None
             elif kind == 'sources':
                 row = self.store.one('SELECT material_id FROM sources WHERE id=?', (ident,))
                 cid = self.store.collection_for(row['material_id']) if row else None
@@ -169,21 +171,27 @@ class Accounts:
                 with self.store.connect() as db:
                     row = db.execute('SELECT * FROM oauth_states WHERE state_hash=? AND created>?', (digest(state), time.time()-600)).fetchone()
                     db.execute('DELETE FROM oauth_states WHERE state_hash=?', (digest(state),))
+            stage = 'state'
             try:
                 if not row or request.query_params.get('error') or not request.query_params.get('code'):
                     raise ValueError('OAuth state invalid')
+                stage = 'token'
                 async with httpx.AsyncClient(timeout=20) as client:
                     response = await client.post('https://oauth2.googleapis.com/token', data={
                         'code': request.query_params['code'], 'client_id': os.environ['GOOGLE_CLIENT_ID'],
                         'client_secret': os.environ['GOOGLE_CLIENT_SECRET'], 'redirect_uri': row['redirect_uri'],
                         'grant_type': 'authorization_code', 'code_verifier': row['verifier']})
                     response.raise_for_status()
+                stage = 'identity'
                 from google.oauth2 import id_token
                 from google.auth.transport.requests import Request as GoogleRequest
                 from starlette.concurrency import run_in_threadpool
-                identity = await run_in_threadpool(id_token.verify_oauth2_token, response.json()['id_token'], GoogleRequest(), os.environ['GOOGLE_CLIENT_ID'])
+                # Google can issue a token a few seconds ahead of the local clock.
+                # Keep full verification, allowing only bounded timestamp drift.
+                identity = await run_in_threadpool(id_token.verify_oauth2_token, response.json()['id_token'], GoogleRequest(), os.environ['GOOGLE_CLIENT_ID'], clock_skew_in_seconds=30)
                 if identity.get('nonce') != row['nonce'] or not identity.get('email_verified') or not identity.get('sub'):
                     raise ValueError('Google identity invalid')
+                stage = 'account'
                 user = self.store.one('SELECT * FROM users WHERE google_sub=?', (identity['sub'],))
                 if not user:
                     existing = self.store.one('SELECT * FROM users WHERE email=?', (identity['email'].lower(),))
@@ -197,7 +205,30 @@ class Accounts:
                                            (user_id, identity['email'].lower(), identity.get('name', identity['email'].split('@')[0]), identity['sub'], 'google', time.time()))
                     user = self.store.one('SELECT * FROM users WHERE id=?', (user_id,))
                 result = self.login_response(user, redirect=True)
-            except Exception:
-                result = RedirectResponse('/?authError=google-signin', status_code=303)
+            except Exception as exc:
+                # Never log provider response bodies, authorization codes, tokens,
+                # email addresses, or exception strings containing request URLs.
+                error = 'google-signin'
+                reason = type(exc).__name__
+                if isinstance(exc, httpx.RequestError):
+                    error = 'google-network'
+                elif isinstance(exc, httpx.HTTPStatusError):
+                    try:
+                        provider_error = exc.response.json().get('error')
+                    except (ValueError, AttributeError):
+                        provider_error = None
+                    if provider_error in ('invalid_client', 'unauthorized_client', 'invalid_grant', 'redirect_uri_mismatch'):
+                        reason = provider_error
+                    error = 'google-setup' if provider_error in ('invalid_client', 'unauthorized_client', 'redirect_uri_mismatch') else 'google-retry'
+                elif stage == 'identity':
+                    error = 'google-verify'
+                    for prefix, label in (('Token used too early', 'clock-ahead'), ('Token expired', 'token-expired'), ('Token has wrong audience', 'wrong-audience'), ('Wrong issuer', 'wrong-issuer')):
+                        if str(exc).startswith(prefix):
+                            reason = label
+                            break
+                elif stage == 'state':
+                    error = 'google-session'
+                logger.warning('Google sign-in failed: stage=%s reason=%s', stage, reason)
+                result = RedirectResponse('/?authError='+error, status_code=303)
             result.delete_cookie('lecture_lab_oauth')
             return result

@@ -100,7 +100,10 @@ def register_mistake_routes(app, store, engine, create_quiz, request_model, requ
                 raise HTTPException(400, 'Choose currently incorrect or skipped questions. Reopen mistake practice to refresh the list.')
             focus = [missed[qid] for qid in ids]
             mids = []
+            general = quiz.get('grounding') == 'general'
             for item in focus:
+                if general and item['source'].get('kind') == 'general':
+                    continue
                 source = store.one('SELECT s.material_id,mc.collection_id FROM sources s '
                     'JOIN material_collections mc ON mc.material_id=s.material_id WHERE s.id=?', (item['source'].get('id'),))
                 if not source or source['collection_id'] != quiz['collectionId']:
@@ -110,11 +113,11 @@ def register_mistake_routes(app, store, engine, create_quiz, request_model, requ
             practice = {'requestId': request.requestId, 'questionIds': ids, 'materialIds': mids,
                 'questions': [{'questionId': q['questionId'], 'prompt': q['prompt'][:1800],
                     'studentAnswer': str(q['studentAnswer'])[:1000] if q['studentAnswer'] is not None else None,
-                    'status': q['status'], 'sourceId': q['source']['id']} for q in focus]}
+                    'status': q['status'], 'sourceId': q['source'].get('id')} for q in focus]}
             prompt = ('Practice my mistakes. Create new questions testing the concepts behind the selected '
                       'incorrect or skipped questions. Use different wording and examples. Keep the original '
                       'difficulty and provide useful explanations grounded in the lecture. '
                       'Test application or interpretation in new scenarios, not a paraphrase of an earlier question. '
                       'Focus only on these selected questions:\n' + '\n'.join(q['prompt'][:200] for q in focus))
             return create_quiz(request_model(collectionId=quiz['collectionId'], parentQuizId=quiz_id,
-                prompt=prompt, format=quiz['format'], count=request.count), mistake_practice=practice)
+                prompt=prompt, format=quiz['format'], count=request.count), mistake_practice=practice, allow_general=general)

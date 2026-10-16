@@ -61,11 +61,28 @@ failNetwork=false;await run('sendAgentMessage()');
 const retriedRequest=JSON.parse(calls.filter(c=>c.path?.endsWith('/messages')).at(-1).options.body);
 assert.equal(lastRequest.requestId,retriedRequest.requestId);
 
-// Empty folders cannot send a generation request.
+// Empty folders can generate from general knowledge without uploading lectures.
 context.currentCollection={id:'course-1',materials:[]};$('#agent-input').value='Quiz me';
-const before=calls.length;await run('sendAgentMessage()');
-assert.equal(calls.length,before);
-assert.match($('#agent-error').textContent,/Add lecture material/);
+run('syncAgentState()');assert.equal($('#agent-send').disabled,false);
+const before=calls.filter(c=>c.path?.endsWith('/messages')).length;await run('sendAgentMessage()');
+assert.equal(calls.filter(c=>c.path?.endsWith('/messages')).length,before+1);
+assert.equal($('#agent-error').textContent,'');
+assert.match($('#agent-ready').textContent,/General knowledge/);
+
+// With no folders, the first send creates a private destination, then generates.
+const regularApi=context.api;
+context.collectionId=null;context.collectionRows=[];context.currentCollection=null;
+context.refreshLibrary=async()=>{context.currentCollection={id:'new-folder',materials:[]};context.collectionRows=[{id:'new-folder',name:'Agent practice'}]};
+context.api=async(path,options)=>path==='/api/collections'?({id:'new-folder'}):regularApi(path,options);
+$('#agent-input').value='Create a quiz about memory';run('syncAgentState()');
+assert.equal($('#agent-send').disabled,false);
+await run('sendAgentMessage()');
+assert.equal(context.collectionId,'new-folder');
+assert.ok(calls.some(c=>c.path==='/api/collections/new-folder/agent/messages'));
+context.api=regularApi;context.collectionId='course-1';
+run("agentMessages=[{id:'general-result',role:'assistant',state:'ready',text:'Ready',set:{id:'general',title:'Memory',format:'mcq',count:4,grounding:'general',sources:[]}}];renderAgentConversation()");
+assert.match($('#agent-messages').innerHTML,/General knowledge/);
+assert.doesNotMatch($('#agent-messages').innerHTML,/lecture source/);
 
 // A late response from another folder cannot replace the visible conversation.
 context.currentCollection={id:'course-1',materials:[{searchReady:true}]};
@@ -83,4 +100,4 @@ run('resetAgentSession()');
 assert.equal($('#agent-messages').innerHTML,'');assert.equal($('#agent-input').value,'');
 const page=readFileSync('source/page.html','utf8');
 assert.match(page,/id="nav-agent"/);assert.match(page,/id="agent-view"/);assert.match(page,/agent.js/);
-console.log('Study agent checks passed: folder-scoped requests, explicit practice opening, source links, network retry idempotency, empty-folder gating, stale-response isolation, and session cleanup.');
+console.log('Study agent checks passed: folder-scoped requests, explicit practice opening, source links, network retry idempotency, optional uploads and no-folder creation, stale-response isolation, and session cleanup.');

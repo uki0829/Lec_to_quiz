@@ -229,7 +229,13 @@ def resolve_source(item, sources):
             'url': '/api/sources/' + original_id}
 
 
-def validate_cheatsheet(raw, sources, count):
+def general_source(item):
+    if item.pop('sourceId', '') or item.pop('quote', ''):
+        raise ValueError('General knowledge must not invent lecture citations or quotations')
+    return {'name': 'General knowledge', 'locator': 'Not based on lecture sources', 'quote': '', 'kind': 'general'}
+
+
+def validate_cheatsheet(raw, sources, count, general=False):
     if isinstance(raw, dict) and isinstance(raw.get('sections'), list):
         evidence = {q['id']: (s['id'], q['text']) for s in sources for q in sheet_excerpts(s)}
         sections = []
@@ -263,7 +269,7 @@ def validate_cheatsheet(raw, sources, count):
         if any(not t.strip() or len(t) > 6000 for t in section['points'] + section['formulas']):
             raise ValueError('Cheat sheet content is empty or too long')
         section['id'] = 's' + str(i)
-        section['source'] = resolve_source(section, sources)
+        section['source'] = general_source(section) if general else resolve_source(section, sources)
     return data
 
 
@@ -308,9 +314,9 @@ def validate_calculation_prompt(prompt):
             'and chosen values do not need to appear in the source.')
 
 
-def validate_quiz(raw, sources, format_, count):
+def validate_quiz(raw, sources, format_, count, general=False):
     if format_ == 'cheatsheet':
-        return validate_cheatsheet(raw, sources, count)
+        return validate_cheatsheet(raw, sources, count, general=general)
     raw = bind_quiz_evidence(raw, sources)
     if isinstance(raw, dict) and isinstance(raw.get('questions'), list):
         raw = {**raw, 'questions': [{**q, 'id': 'q' + str(i)} if isinstance(q, dict) else q
@@ -326,9 +332,9 @@ def validate_quiz(raw, sources, format_, count):
     for question_index, q in enumerate(questions):
         if q['type'] != format_:
             raise ValueError(f"The model returned {q['type']} questions; the selected format is {format_}")
-        if not all(q[k].strip() for k in ("prompt", "answer", "explanation", "quote")):
+        if not all(q[k].strip() for k in (("prompt", "answer", "explanation") if general else ("prompt", "answer", "explanation", "quote"))):
             raise ValueError("A question is missing its explanation or supporting excerpt")
-        q['source'] = resolve_source(q, sources)
+        q['source'] = general_source(q) if general else resolve_source(q, sources)
         if format_ == "mcq":
             if len(q["options"]) != 4 or len(set(q["options"])) != 4:
                 raise ValueError("Multiple-choice questions need four distinct options")

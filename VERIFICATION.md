@@ -1,5 +1,26 @@
 # Verification record
 
+## Vertical flashcard flip and yellow star
+
+- Flashcards use a two-phase vertical rotateX animation, swapping question/answer at the midpoint. Navigation cancels in-flight flips, repeated clicks cannot queue flips, and reduced-motion preferences switch faces immediately. Card dimensions and navigation remain fixed.
+- Starring immediately displays the bright yellow filled icon while saving. Save failures restore the previous selection and preserve the question bank; selected icons retain their original yellow color in the dark practice theme.
+- Frontend and creator checks passed for both flip directions, midpoint reveal, rapid-click guarding, navigation cancellation, reduced motion, immediate star feedback, persistence, and failed-save rollback. JavaScript syntax and whitespace checks passed. Browser checks in an isolated fixture library confirmed reveal/reverse and a visibly yellow saved star. No main-library practice was modified.
+
+## Optional-upload study agent and upload progress
+
+- Material/index jobs show a progress bar without unit counts. Reopening the upload or create-set dialog clears old cancellation notices and the global failed-job panel. Stored material processing remains retryable.
+- Agent Send and topic suggestions work without indexed materials. When no folder is selected, Send creates a private Agent practice folder. The agent searches the selected folder, then falls back to general knowledge only for no indexed sources or insufficient relevance; ambiguity and provider failures are not silently treated as missing evidence.
+- General quizzes/flashcards/calculations/guides retain structured validation, repair, arithmetic checks, persistence, per-account access checks, progress, sharing, and citations labelled as absent. No synthetic lecture material or vector entries are created. Lecture-backed generation retains exact source validation. General mistake practice uses selected concepts without fabricating sources.
+- Live OpenAI checks in an isolated temporary database generated four psychology questions without uploads, four psychology questions after searching unrelated physics notes, then four physics questions with working lecture citations. Results are recorded in ignored data/agent-general-live-check.json. These checks establish successful workflows, not automatic factual correctness.
+- 167 backend tests and all frontend checks passed. Browser inspection confirmed an empty folder enables Send and displays General knowledge available, and real generated results distinguish general knowledge from lecture-source results. No main-library content was changed during these checks.
+
+## Google sign-in clock tolerance and diagnostics
+
+- Live troubleshooting reached Google's account chooser and token exchange, then failed during identity verification with InvalidValue. A Google endpoint clock comparison estimated the local clock about two seconds behind; clock drift is the suspected trigger, pending a successful live retry.
+- Token verification now uses the Google verifier's 30-second clock-skew allowance. Signature, issuer, audience, nonce, and verified-email checks remain required. Signed-token fixtures verify a two-second future issue time succeeds, a 120-second future issue time fails, and wrong-audience and expired tokens fail.
+- Separate messages identify session, network, configuration, token-exchange, and identity-verification failures. Diagnostic logs contain only the stage and safe error categories; tests check that private codes, tokens, and secrets are excluded.
+- Validation: 159 Python tests, all frontend checks, JavaScript syntax checks, and diff whitespace checks passed.
+
 ## Practice my mistakes, October 15, 2026
 
 - Added a summary action for private generated MCQ/calculation sets with latest incorrect/skipped submissions. A checkbox dialog lets students select focus questions and generate four new questions in the same format/difficulty. Flashcards, ungraded answers, sample/imported content, and shared copies are excluded. Skipped questions now have a separate summary count.

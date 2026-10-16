@@ -165,3 +165,38 @@ assert.doesNotMatch(document.querySelector('#quiz-grid').innerHTML,/Continue · 
 run("showSummary();$('#back-library').onclick();");
 assert.equal(run('capturedState.quiz.progress.review'),true);
 console.log('Restart persistence checks passed: unchanged identity, cleared answers/review, current home counts, and Home opens Sets.');
+
+// Material processing shows an accessible bar without internal unit counts.
+run("showJob({kind:'material',status:'running',stage:'Reading PDF pages',completed:3,total:20})");
+assert.match(document.querySelector('#job-status').innerHTML, /<progress/);
+assert.doesNotMatch(document.querySelector('#job-status').innerHTML, /units|Reading PDF pages|3 of 20/);
+run("showJob({kind:'material',status:'running',completed:0,total:0})");
+assert.match(document.querySelector('#job-status').innerHTML, /<progress/);
+assert.doesNotMatch(document.querySelector('#job-status').innerHTML, /value=/);
+// Opening the uploader after cancellation clears both modal and global errors.
+run("activeJob=null;busy=false;currentCollection={name:'Physics',materials:[]};collectionId='c1';message('Processing cancelled',true);$('#job-panel').hidden=false;openUpload()");
+assert.equal(document.querySelector('#upload-message').textContent, '');
+assert.equal(document.querySelector('#composer-message').textContent, '');
+assert.equal(document.querySelector('#job-panel').hidden, true);
+assert.equal(document.querySelector('#job-status').innerHTML, '');
+console.log('Upload polish passed: progress-only material processing and cleared cancellation errors on reopening.');
+
+// Star feedback is immediate, persisted on success, and rolled back on failure.
+run("quiz={id:'optimistic-star',collectionId:'c1',mode:'generated',format:'flashcard',title:'Cards',questions:structuredClone(samples.flashcard)};collectionId='c1';currentCollection={id:'c1',materials:[]};bankRows=[];index=0;answers={};");
+let finishStar;
+context.api=(url,options)=>new Promise(resolve=>{finishStar=()=>resolve({starred:JSON.parse(options.body).starred})});
+let pendingStar=run('toggleQuestionStar(quiz.questions[0])');
+assert.equal(run('isQuestionStarred(quiz.questions[0])'),true);
+assert.match(document.querySelector('#question').innerHTML,/flash-star is-starred/);
+finishStar();await pendingStar;
+assert.equal(run('quiz.questions[0].starred'),true);
+assert.equal(run('bankRows.length'),1);
+let failStar;
+context.api=()=>new Promise((resolve,reject)=>{failStar=()=>reject(Error('Save failed'))});
+pendingStar=run('toggleQuestionStar(quiz.questions[0])');
+assert.equal(run('isQuestionStarred(quiz.questions[0])'),false);
+failStar();await pendingStar;
+assert.equal(run('isQuestionStarred(quiz.questions[0])'),true);
+assert.equal(run('bankRows.length'),1);
+assert.match(document.querySelector('#composer-message').textContent,/Save failed/);
+console.log('Star feedback passed: immediate selection, saved question bank, and rollback after failed save.');

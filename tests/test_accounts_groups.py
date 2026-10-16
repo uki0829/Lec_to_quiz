@@ -97,7 +97,7 @@ def test_demo_and_google_configuration(tmp_path,monkeypatch):
         assert not client.get('/api/auth/me').json()['googleConfigured']
         response=client.get('/api/auth/google/start',follow_redirects=False)
         assert response.headers['location']=='/?authError=google-setup'
-        assert client.get('/api/auth/google/callback?state=invalid&code=invalid',follow_redirects=False).headers['location']=='/?authError=google-signin'
+        assert client.get('/api/auth/google/callback?state=invalid&code=invalid',follow_redirects=False).headers['location']=='/?authError=google-session'
         assert client.post('/api/auth/demo').json()['user']['demo']==1
         group=client.get('/api/groups').json()['groups'][0]
         assert group['demo']==1 and group['setCount']==3
@@ -141,15 +141,16 @@ def test_google_callback_verifies_identity_and_rejects_replay(tmp_path,monkeypat
     with TestClient(app) as client:
         location=client.get('/api/auth/google/start',follow_redirects=False).headers['location']
         query=parse_qs(urlparse(location).query)
-        def verify(token,request,audience):
+        def verify(token,request,audience,clock_skew_in_seconds=0):
             assert token=='fixture-token' and audience=='test-client'
+            assert clock_skew_in_seconds == 30
             return {'sub':'fixture-google-user','email':'verified@example.test','name':'Verified student','email_verified':True,'nonce':query['nonce'][0]}
         monkeypatch.setattr(id_token,'verify_oauth2_token',verify)
         callback='/api/auth/google/callback?state='+query['state'][0]+'&code=fixture-code'
         assert client.get(callback,follow_redirects=False).headers['location']=='/'
         user=client.get('/api/auth/me').json()['user']
         assert user['provider']=='google' and user['email']=='verified@example.test'
-        assert client.get(callback,follow_redirects=False).headers['location']=='/?authError=google-signin'
+        assert client.get(callback,follow_redirects=False).headers['location']=='/?authError=google-session'
         assert app.state.store.one('SELECT * FROM oauth_states') is None
 
 
@@ -276,3 +277,90 @@ def test_demo_leave_and_ownership_transfer_persist_after_restart(tmp_path):
         assert store.one("SELECT owner_id FROM study_groups WHERE id='demo-study-group'")['owner_id']=='demo-mia'
         assert len(store.all("SELECT * FROM group_members WHERE group_id='demo-study-group'"))==1
         assert len(store.all("SELECT * FROM group_sets WHERE group_id='demo-study-group'"))==3
+
+
+@pytest.mark.parametrize('failure,expected', [
+    ('network', 'google-network'),
+    ('invalid_client', 'google-setup'),
+    ('invalid_grant', 'google-retry'),
+    ('identity', 'google-verify'),
+])
+def test_google_failure_details_are_actionable_and_logs_exclude_secrets(tmp_path, monkeypatch, caplog, failure, expected):
+    from urllib.parse import urlparse, parse_qs
+    from google.oauth2 import id_token
+    import accounts
+    monkeypatch.setenv('GOOGLE_CLIENT_ID', 'fixture-client')
+    monkeypatch.setenv('GOOGLE_CLIENT_SECRET', 'secret-must-not-be-logged')
+    app = create_app(tmp_path, ai=FakeAI(), run_jobs=False)
+    class TokenClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, data):
+            request = accounts.httpx.Request('POST', url)
+            if failure == 'network':
+                raise accounts.httpx.ConnectError('secret-must-not-be-logged', request=request)
+            if failure == 'identity':
+                return accounts.httpx.Response(200, json={'id_token': 'private-token'}, request=request)
+            return accounts.httpx.Response(400, json={'error': failure, 'error_description': 'secret-must-not-be-logged'}, request=request)
+    monkeypatch.setattr(accounts.httpx, 'AsyncClient', TokenClient)
+    def failed_identity(*args, **kwargs):
+        raise ValueError('private-token secret-must-not-be-logged')
+    monkeypatch.setattr(id_token, 'verify_oauth2_token', failed_identity)
+    with TestClient(app) as client:
+        start = client.get('/api/auth/google/start', follow_redirects=False)
+        state = parse_qs(urlparse(start.headers['location']).query)['state'][0]
+        with caplog.at_level('WARNING', logger='accounts'):
+            result = client.get('/api/auth/google/callback', params={'state': state, 'code': 'private-code'}, follow_redirects=False)
+        assert result.headers['location'] == '/?authError=' + expected
+        assert client.get('/api/auth/me').json()['user'] is None
+        assert app.state.store.one('SELECT * FROM oauth_states') is None
+        assert 'Google sign-in failed: stage=' in caplog.text
+        for secret in ('private-token', 'private-code', 'secret-must-not-be-logged'):
+            assert secret not in caplog.text
+
+
+@pytest.mark.parametrize('issued_offset,audience,expected', [
+    (2, 'fixture-client', '/'),
+    (120, 'fixture-client', '/?authError=google-verify'),
+    (2, 'wrong-client', '/?authError=google-verify'),
+    (-4000, 'fixture-client', '/?authError=google-verify'),
+])
+def test_google_real_token_verifier_bounds_clock_drift(tmp_path, monkeypatch, issued_offset, audience, expected):
+    import datetime
+    import time
+    from urllib.parse import urlparse, parse_qs
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives import serialization
+    from google.auth import crypt, jwt, _helpers
+    from google.oauth2 import id_token
+    import accounts
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    public = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    now = int(time.time())
+    monkeypatch.setattr(_helpers, 'utcnow', lambda: datetime.datetime.fromtimestamp(now, datetime.timezone.utc).replace(tzinfo=None))
+    monkeypatch.setattr(id_token, '_fetch_certs', lambda *args: {'fixture-key': public})
+    monkeypatch.setenv('GOOGLE_CLIENT_ID', 'fixture-client')
+    monkeypatch.setenv('GOOGLE_CLIENT_SECRET', 'fixture-secret')
+    token = None
+    class TokenClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, data):
+            return accounts.httpx.Response(200, json={'id_token': token}, request=accounts.httpx.Request('POST', url))
+    monkeypatch.setattr(accounts.httpx, 'AsyncClient', TokenClient)
+    app = create_app(tmp_path, ai=FakeAI(), run_jobs=False)
+    with TestClient(app) as client:
+        start = client.get('/api/auth/google/start', follow_redirects=False)
+        query = parse_qs(urlparse(start.headers['location']).query)
+        token = jwt.encode(crypt.RSASigner.from_string(private, key_id='fixture-key'), {
+            'iss': 'https://accounts.google.com', 'aud': audience, 'sub': 'fixture-sub',
+            'email': 'clock@example.test', 'email_verified': True, 'nonce': query['nonce'][0],
+            'iat': now + issued_offset, 'exp': now + issued_offset + 3600,
+        }).decode()
+        result = client.get('/api/auth/google/callback', params={'state': query['state'][0], 'code': 'fixture-code'}, follow_redirects=False)
+        assert result.headers['location'] == expected
+        user = client.get('/api/auth/me').json()['user']
+        assert bool(user) == (expected == '/')

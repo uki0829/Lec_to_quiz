@@ -48,6 +48,17 @@ class AgentAI(FakeAI):
                 q['prompt'] = 'Different practice: ' + q['prompt']
         return result
 
+    def generate_general(self, params, validation_feedback=''):
+        self.general_calls = getattr(self, 'general_calls', 0) + 1
+        if params['format'] == 'cheatsheet':
+            return {'status': 'ready', 'message': '', 'title': 'General study guide', 'description': '',
+                    'sections': [{'heading': 'Core ideas', 'points': ['An authored fixture explanation.'],
+                                  'formulas': [], 'sourceId': '', 'quote': ''}]}
+        raw = self.generate(params, [{'id': 'test-only', 'text': 'Authored fixture content'}], validation_feedback)
+        for q in raw['questions']:
+            q.update(sourceId='', quote='')
+        return raw
+
 
 @pytest.fixture
 def agent(tmp_path):
@@ -139,12 +150,12 @@ def test_agent_empty_sources_clarification_and_planning_failure(agent):
     client, app, ai, cid, _ = agent
     empty = collection(client, 'Empty')
     response = send(client, empty)
-    assert response.json()['messages'][-1]['state'] == 'clarify'
-    assert not ai.plans
+    assert finish(client, app, empty, response)['state'] == 'ready'
+    assert ai.plans[-1]['materials'] == []
     ai.clarify = True
     response = send(client, cid)
     assert response.json()['messages'][-1]['state'] == 'clarify'
-    assert not app.state.store.one("SELECT id FROM jobs WHERE kind='quiz'")
+    assert not app.state.store.one("SELECT id FROM jobs WHERE kind='quiz' AND status IN ('queued','running')")
     ai.clarify = False; ai.fail_plan = True
     response = send(client, cid, key='request-0004')
     assert response.json()['messages'][-1]['state'] == 'failed'
@@ -152,7 +163,7 @@ def test_agent_empty_sources_clarification_and_planning_failure(agent):
     ai.fail_plan = False; ai.bad_plan = True
     response = send(client, cid, key='request-0005')
     assert response.json()['messages'][-1]['state'] == 'failed'
-    assert not app.state.store.one("SELECT id FROM jobs WHERE kind='quiz'")
+    assert not app.state.store.one("SELECT id FROM jobs WHERE kind='quiz' AND status IN ('queued','running')")
     assert send(client, cid, '   ', key='request-0006').status_code == 400
 
 
@@ -209,5 +220,130 @@ def test_agent_planner_uses_structured_contract(monkeypatch):
     AI().plan_study('Quiz me', [], [{'name': 'Psychology lecture'}], None)
     assert captured['schema'] is AgentPlan
     assert 'retrieves actual lecture evidence using RAG' in captured['system']
+    assert 'Uploads are optional' in captured['system']
     assert 'untrusted data' in captured['system']
     assert 'Psychology lecture' in captured['content'][0]['text']
+
+
+@pytest.mark.parametrize('format_', ['mcq', 'flashcard', 'calculation', 'cheatsheet'])
+def test_agent_without_uploads_saves_general_practice_and_survives_restart(agent, monkeypatch, format_):
+    from storage import Store
+    client, app, ai, _, _ = agent
+    cid = collection(client, 'No uploads')
+    plan = ai.plan_study
+    def choose(*args):
+        result = plan(*args); result['format'] = format_; return result
+    monkeypatch.setattr(ai, 'plan_study', choose)
+    message = finish(client, app, cid, send(client, cid, 'Practice my topic', 'empty-' + format_))
+    assert message['state'] == 'ready', message
+    assert message['set']['grounding'] == 'general' and message['set']['sources'] == []
+    quiz = client.get('/api/quizzes/' + message['quizId']).json()
+    assert quiz['grounding'] == 'general' and quiz['collectionId'] == cid
+    assert app.state.store.collection_materials(cid) == []
+    assert quiz['request']['resolved']['fallbackReason'] == 'no_indexed_sources'
+    assert quiz['request']['submitted']['origin'] == 'agent'
+    for item in quiz.get('sections', []) + quiz['questions']:
+        assert item['source']['kind'] == 'general'
+        assert not item['source'].get('id') and item['source']['quote'] == ''
+    assert not app.state.store.all('SELECT * FROM quiz_sources WHERE quiz_id=?', (quiz['id'],))
+    restarted = Store(app.state.store.root)
+    assert restarted.quiz(quiz['id'])['collectionId'] == cid
+    assert client.get('/api/quizzes?collectionId=' + cid).json()['quizzes'][0]['id'] == quiz['id']
+    if format_ == 'cheatsheet':
+        response = client.post('/api/cheatsheets/export?format=html', json=quiz)
+        assert response.status_code == 200 and 'General knowledge' in response.text
+
+
+def test_agent_irrelevant_rag_falls_back_but_clarification_and_failures_do_not(agent, monkeypatch):
+    client, app, ai, cid, mid = agent
+    ai.absent = True
+    message = finish(client, app, cid, send(client, cid))
+    quiz = app.state.store.quiz(message['quizId'])
+    assert quiz['grounding'] == 'general'
+    assert quiz['request']['resolved']['fallbackReason'] == 'no_relevant_sources'
+    assert ai.selected and ai.general_calls == 1
+    # Removing the unrelated upload preserves the general quiz and its request.
+    assert client.delete('/api/materials/' + mid).status_code == 200
+    assert app.state.store.quiz(quiz['id'])['request'] is not None
+    add(client, app.state.engine, cid)
+    monkeypatch.setattr(ai, 'select', lambda *args: {'status': 'clarification_needed', 'message': 'Which notation?', 'sourceIds': []})
+    result = finish(client, app, cid, send(client, cid, key='ambiguous-request'))
+    assert result['state'] == 'clarify' and ai.general_calls == 1
+    def unavailable(*args): raise ValueError('Retrieval selection provider unavailable')
+    monkeypatch.setattr(ai, 'select', unavailable)
+    result = finish(client, app, cid, send(client, cid, key='provider-failure'))
+    assert result['state'] == 'failed' and ai.general_calls == 1
+
+
+def test_general_jobs_retry_cancel_and_reject_fabricated_sources(agent, monkeypatch):
+    client, app, ai, _, _ = agent
+    cid = collection(client, 'Empty')
+    ai.fail_generate = True
+    failed = finish(client, app, cid, send(client, cid))
+    assert failed['state'] == 'failed'
+    ai.fail_generate = False
+    ready = finish(client, app, cid, client.post(f"/api/collections/{cid}/agent/messages/{failed['id']}/retry"))
+    assert ready['state'] == 'ready'
+    response = send(client, cid, key='cancel-general')
+    pending = response.json()['messages'][-1]
+    client.post('/api/jobs/' + pending['jobId'] + '/cancel')
+    before = ai.general_calls
+    assert finish(client, app, cid, response)['state'] == 'failed'
+    assert ai.general_calls == before
+    generate = ai.generate_general
+    def fabricated(*args):
+        raw = generate(*args); raw['questions'][0]['quote'] = 'Fabricated lecture quotation'; return raw
+    monkeypatch.setattr(ai, 'generate_general', fabricated)
+    result = finish(client, app, cid, send(client, cid, key='fabricated-source'))
+    assert result['state'] == 'failed' and 'invent lecture citations' in result['text']
+
+
+def test_general_jobs_and_sets_remain_private(tmp_path):
+    ai = AgentAI()
+    app = create_app(tmp_path, ai=ai, run_jobs=False)
+    with TestClient(app) as alice, TestClient(app) as bob:
+        for client, name in ((alice, 'Alice'), (bob, 'Bob')):
+            client.post('/api/auth/register', json={'name': name, 'email': name+'@example.test', 'password': 'StudyDemo!123'})
+        cid = collection(alice)
+        response = send(alice, cid)
+        job_id = response.json()['messages'][-1]['jobId']
+        assert alice.get('/api/jobs/' + job_id).status_code == 200
+        assert bob.get('/api/jobs/' + job_id).status_code == 404
+        assert bob.post('/api/jobs/' + job_id + '/cancel').status_code == 404
+        ready = finish(alice, app, cid, response)
+        assert bob.get('/api/quizzes/' + ready['quizId']).status_code == 404
+        assert bob.get('/api/collections/' + cid + '/agent').status_code == 404
+        quiz = app.state.store.quiz(ready['quizId'])
+        q = quiz['questions'][0]
+        alice.put('/api/quizzes/' + quiz['id'] + '/progress', json={'index': 0, 'answers': {q['id']: {'submitted': True, 'selected': 1}}})
+        monkey = pytest.MonkeyPatch()
+        monkey.setattr(ai, 'review_mistake_practice', lambda *a: {'status': 'ready', 'message': ''}, raising=False)
+        try:
+            response = alice.post('/api/quizzes/' + quiz['id'] + '/mistakes', json={'questionIds': [q['id']], 'count': 4, 'requestId': 'general-mistakes'})
+            assert response.status_code == 202, response.text
+            # A folder cannot be deleted while its no-upload job is active.
+            assert alice.delete('/api/collections/' + cid).status_code == 409
+            generate = ai.generate_general
+            def different(*args):
+                raw = generate(*args)
+                for index, item in enumerate(raw['questions']):
+                    item['prompt'] = 'A new scenario tests the same concept, with distinct wording: ' + str(index)
+                return raw
+            monkey.setattr(ai, 'generate_general', different)
+            app.state.engine.run(response.json()['jobId'])
+            job = alice.get('/api/jobs/' + response.json()['jobId']).json()
+            assert job['status'] == 'completed', job
+            assert app.state.store.quiz(job['result']['quizId'])['grounding'] == 'general'
+            gid = alice.post('/api/groups', json={'name': 'General practice group'}).json()['id']
+            shared = alice.post(f'/api/groups/{gid}/share', json={'quizId': quiz['id']}).json()['shareId']
+            assert alice.get('/api/shared-sets/' + shared).json()['grounding'] == 'general'
+        finally: monkey.undo()
+
+
+def test_general_prompt_keeps_citations_empty_and_preserves_math_contract(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(AI, 'structured', lambda self, system, content, schema: captured.update(system=system, content=content, schema=schema) or {})
+    AI().generate_general({'prompt': 'Practice Newton laws', 'format': 'calculation', 'count': 4, 'difficulty': 'beginner'})
+    assert 'sourceId and quote' in captured['system']
+    assert 'standalone' in captured['system'] and 'numericAnswer' in captured['system']
+    assert 'Practice Newton laws' in captured['content'][0]['text']
