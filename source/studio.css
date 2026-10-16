@@ -478,9 +478,11 @@
 
 /* Conversational practice keeps the selected lecture folder visible. */
 .main-content:has(.groups-view:not([hidden]),.agent-view:not([hidden])){margin-block:0}
-.agent-view,.groups-view{max-width:960px;margin:0 auto}
+.agent-view,.groups-view{max-width:960px;margin:0 auto;container-type:inline-size}
 .agent-view{max-width:960px;margin:0 auto;height:calc(100dvh - 170px);min-height:540px;display:flex;flex-direction:column;gap:20px}
-.agent-header,.groups-heading{min-height:86px;flex:none;display:flex;justify-content:space-between;align-items:center;gap:24px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.agent-header,.groups-heading{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:80px;align-items:center;column-gap:24px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.agent-header{grid-template-columns:minmax(0,1fr) auto minmax(180px,320px)}
+.agent-header .agent-folder{align-self:end}
 .agent-header>div:first-child,.groups-title{display:flex;align-items:center;gap:12px}.agent-header h1,.groups-heading h1{font-size:28px;letter-spacing:-.7px;margin:0}
 .groups-heading{margin-bottom:0}.groups-description{margin:18px 0 24px;color:var(--muted);font-size:14px}
 .agent-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#423968}.agent-mark .icon{width:24px;height:24px}
@@ -501,7 +503,16 @@
 #authenticated-app:has(#agent-view:not([hidden])) #job-panel{display:none}
 @media(max-width:700px){.agent-view{height:calc(100dvh - 135px);min-height:480px;gap:16px}.agent-header{align-items:flex-start;gap:15px;flex-wrap:wrap}.agent-header h1,.groups-heading h1{font-size:25px}.agent-folder{max-width:none;min-width:0;width:100%;flex-basis:100%}.agent-empty{padding:28px 5px 15px}.agent-empty h2{font-size:25px}.agent-message{max-width:96%}.agent-result{padding:17px}.agent-ready{display:none}.agent-composer{padding:14px}.agent-composer textarea{font-size:16px}}
 
-@media(max-width:700px){.groups-heading{align-items:flex-start;gap:15px;flex-wrap:wrap}.groups-heading>div:last-child{flex-wrap:wrap;justify-content:flex-start}.groups-description{margin-top:16px}}
+@media(max-width:700px){.groups-heading>div:last-child{flex-wrap:wrap;justify-content:flex-start}.groups-description{margin-top:16px}}
+
+/* Both tabs reserve the same title and control rows at narrower content widths. */
+@container(max-width:760px){
+ .agent-header,.groups-heading{grid-template-columns:auto minmax(0,1fr);grid-template-rows:44px 80px;gap:16px 20px;align-items:center}
+ .agent-header>div:first-child,.groups-title{grid-column:1/-1;grid-row:1;align-self:center}
+ .agent-header .agent-identity{grid-column:1;grid-row:2;margin-left:0;align-self:end}
+ .agent-header .agent-folder{grid-column:2;grid-row:2;width:100%;min-width:0;max-width:none;align-self:end}
+ .groups-heading>div:last-child{grid-column:1/-1;grid-row:2;align-self:end;align-items:center;justify-content:flex-start;min-height:60px;width:100%}
+}
 
 /* Library tabs share a fixed origin, toolbar slots, and card dimensions. */
 html{scrollbar-gutter:stable}
@@ -562,3 +573,12 @@ html[lang="zh-Hans"]{font-family:'Avenir Next','PingFang SC','Microsoft YaHei','
 .group-card-actions .secondary{font-size:13px;padding:9px 13px}
 .group-detail-actions{display:flex;gap:10px;flex-wrap:wrap;flex:none}
 @media(max-width:580px){.group-open{padding:19px;gap:13px}.group-detail-actions{width:100%}}
+
+/* Account name opens a compact menu without changing the header layout. */
+.account-menu{position:relative;min-width:0}.account-menu>summary{display:block;cursor:pointer;list-style:none;padding:8px 4px;border-radius:7px;font-weight:650}.account-menu>summary::-webkit-details-marker{display:none}.account-menu>summary:hover,.account-menu[open]>summary{color:var(--ink);background:var(--panel-soft)}.account-options{position:absolute;right:0;top:calc(100% + 8px);z-index:110;min-width:150px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px #0005}.account-options button{width:100%;justify-content:flex-start;background:transparent;color:var(--ink);font-size:13px;padding:11px 13px}.account-options button:hover{background:var(--panel-soft)}
+
+.collection-nav[aria-busy=true]{cursor:progress}.collection-nav[aria-busy=true] .collection-button{opacity:.7;transition:opacity .12s ease}
+
+/* Slash commands overlay the composer without shifting the conversation. */
+.agent-composer{position:relative}.agent-command-menu{position:absolute;bottom:calc(100% + 12px);left:0;width:min(400px,100%);max-height:min(320px,50dvh);overflow:auto;z-index:60;padding:6px;border:1px solid #566581;border-radius:15px;background:#222c3e;box-shadow:0 14px 35px #0005}.agent-command-menu .agent-command{display:flex;align-items:center;justify-content:flex-start;gap:12px;width:100%;min-height:60px;padding:10px 12px;background:transparent;border-radius:10px;text-align:left;color:var(--ink)}.agent-command-menu .agent-command:hover,.agent-command-menu .agent-command.is-active{background:#34415b}.agent-command>.icon{width:23px;height:23px}.agent-command>span{min-width:0;flex:1}.agent-command strong{display:block;font-size:14px;font-weight:700}.agent-command small{display:block;color:var(--muted);font-size:11px;font-weight:500;margin-top:4px}.agent-command code{font-family:inherit;font-size:11px;font-weight:600;color:var(--blue);white-space:nowrap}
+@media(max-width:480px){.agent-command-menu .agent-command{gap:9px;padding:10px}.agent-command code{font-size:10px}}

@@ -94,6 +94,7 @@ def test_source_backed_targeted_generation_and_saved_parent_progress(practice):
     add(client,app.state.engine,cid,'An unrelated lecture on memory and perception.')
     preview=client.get('/api/quizzes/'+quiz['id']+'/mistakes').json()
     assert [q['questionId'] for q in preview['questions']]==ids[:2]
+    selection_calls = len(ai.queries)
     _,job=complete(client,app.state.engine,request(client,quiz))
     new=app.state.store.quiz(job['result']['quizId'])
     assert new['id']!=quiz['id'] and len(new['questions'])==4
@@ -105,13 +106,47 @@ def test_source_backed_targeted_generation_and_saved_parent_progress(practice):
     assert params['followupContext']['request']==params['prompt']
     assert 'studentAnswer' not in client.get('/api/jobs/'+job['id']).json()['mistakePractice']['questions'][0]
     assert params['retrievalQuery']==quiz['questions'][0]['prompt'][:500]
-    assert ai.queries[-1]==params['retrievalQuery']
+    assert len(ai.queries) == selection_calls  # Saved evidence avoids another model selection.
     assert {s['materialId'] for s in sources}=={mid}
     assert new['request']['parent_quiz_id']==quiz['id']
     assert new['request']['resolved']['focusReview']['status']=='ready'
     assert new['request']['resolved']['mistakePractice']['questionIds']==ids[:1]
+    assert new['request']['resolved']['retrievalMode'] == 'selected_mistake_evidence'
+    assert new['request']['resolved']['reranking']['status'] == 'reused'
+    timings = new['request']['resolved']['timings']
+    assert [t['step'] for t in timings] == ['retrieval', 'generation', 'focus_review']
+    assert all(t['seconds'] >= 0 for t in timings)
     assert app.state.store.quiz(quiz['id'])['progress']['answers']==attempts
     assert all(client.get('/api/sources/'+q['source']['id']).status_code==200 for q in new['questions'])
+
+
+def test_saved_mistake_evidence_obeys_scope_and_readiness(practice):
+    client, app, ai, cid, mid, quiz = practice
+    retriever = app.state.engine.retriever
+    q = quiz['questions'][0]
+    selected = [{'sourceId': q['source']['id'], 'sourceQuote': q['source']['quote']}]
+    assert retriever.mistake_sources(cid, [mid], selected)
+    assert not retriever.mistake_sources('another-collection', [mid], selected)
+    assert not retriever.mistake_sources(cid, ['another-material'], selected)
+    assert not retriever.mistake_sources(cid, [mid], [{'sourceId': q['source']['id'], 'sourceQuote': 'not in the lecture'}])
+    assert not retriever.mistake_sources(cid, [mid], [{'sourceId': q['source']['id']}])
+    original_model = retriever.model
+    retriever.model = 'changed-embedding-model'
+    assert not retriever.mistake_sources(cid, [mid], selected)
+    retriever.model = original_model
+    app.state.store.execute('UPDATE chunks SET indexed=0 WHERE material_id=?', (mid,))
+    assert not retriever.mistake_sources(cid, [mid], selected)
+
+
+def test_mistake_evidence_unavailable_falls_back_to_search(practice, monkeypatch):
+    client, app, ai, cid, mid, quiz = practice
+    save(client, quiz, {quiz['questions'][0]['id']: {'submitted': True, 'selected': 1}})
+    monkeypatch.setattr(app.state.engine.retriever, 'mistake_sources', lambda *args: [])
+    _, job = complete(client, app.state.engine, request(client, quiz))
+    child = app.state.store.quiz(job['result']['quizId'])
+    assert child['request']['resolved']['retrievalMode'] == 'semantic_search'
+    assert ai.queries[-1] == quiz['questions'][0]['prompt'][:500]
+    assert child['request']['resolved']['focusReview']['status'] == 'ready'
 
 
 def test_idempotency_and_refresh_persistence(practice):
@@ -193,11 +228,13 @@ def test_generation_prompt_keeps_attempts_separate_from_evidence(monkeypatch):
         captured.update(system=system,content=content);return {}
     monkeypatch.setattr(AI,'structured',structured)
     AI().generate({'prompt':'Practice mistakes','format':'mcq','count':4,'difficulty':'beginner',
-                   'mistakePractice':{'questions':[{'prompt':'Test concept','studentAnswer':'fallible answer'}]}},
+                   'mistakePractice':{'questions':[{'prompt':'Test concept','studentAnswer':'fallible answer',
+                                                    'sourceQuote':'local-evidence-lookup-only'}]}},
                   [{'id':'source','text':NOTES}])
     assert 'not source facts' in captured['system']
     assert 'ONLY its selected incorrect/skipped questions' in captured['system']
     assert 'mistakePractice' in captured['content'][0]['text']
+    assert 'local-evidence-lookup-only' not in captured['content'][0]['text']
 
 
 def test_near_repeat_guard_allows_new_numerical_givens():

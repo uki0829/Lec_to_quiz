@@ -1,7 +1,8 @@
 /* Pixel classroom: the existing navy study palette, with warm wood and mint chalk. */
 .pixel-avatar{display:block;flex:none;width:92px;height:92px;background-image:url('/static/art/agents/tutor-atlas.png');background-repeat:no-repeat;background-size:200% 200%;image-rendering:pixelated}
 .avatar-explorer{background-position:0 0}.avatar-cloud{background-position:100% 0}.avatar-fox{background-position:0 100%}.avatar-pig{background-position:100% 100%}
-.agent-header{flex-wrap:wrap}.agent-identity{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 4px;border:1px solid var(--line);border-radius:14px;background:var(--panel);text-align:left;margin-left:auto}
+.agent-identity{display:flex;align-items:center;align-self:end;gap:8px;height:60px;padding:6px 12px 6px 4px;border:1px solid var(--line);border-radius:14px;background:var(--panel);text-align:left;margin-left:auto}
+.agent-header .agent-folder .select-trigger,.agent-header .agent-folder>.field{height:60px;border-radius:14px}
 .agent-identity .pixel-avatar{width:46px;height:46px}.agent-identity strong,.agent-identity small{display:block}.agent-identity strong{font-size:14px;color:var(--ink)}.agent-identity small{font-size:11px;color:var(--muted);margin-top:2px}
 .agent-profile-dialog{width:min(680px,calc(100vw - 28px));padding:28px}.agent-profile-dialog .dialog-head p{color:var(--muted);font-size:13px;margin:9px 0 0}.agent-profile-dialog label{display:block;font-size:13px;font-weight:650;margin:18px 0 8px}.agent-profile-dialog .field{width:100%}
 .agent-avatar-library{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}.avatar-choice{display:flex;flex-direction:column;align-items:center;min-width:0;padding:12px 5px;background:#1b2333;border:2px solid #39465d;border-radius:14px;color:var(--ink);transition:border-color .15s,background .15s}

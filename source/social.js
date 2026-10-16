@@ -25,10 +25,36 @@ async function enterSession(user){
   if(user.id==='demo-hefeng'){
     try{const legacy=localStorage.getItem('lecture-lab-state');if(legacy&&!localStorage.getItem(studyStateKey()))localStorage.setItem(studyStateKey(),legacy);localStorage.removeItem('lecture-lab-state');}catch{}
   }
-  $('#account-name').textContent=user.name+(user.demo?' · Demo':'');
+  updateAccountName();
   $('#auth-password').value='';$('#auth-screen').hidden=true;$('#authenticated-app').hidden=false;
   await boot();
 }
+function updateAccountName(){
+  $('#account-name').textContent=currentUser.name+(currentUser.demo?' · Demo':'');
+}
+$('#rename-account').onclick=()=>{
+  if(!currentUser)return;
+  $('#account-menu').open=false;
+  $('#account-display-name').value=currentUser.name;
+  $('#account-rename-error').textContent='';
+  $('#account-rename-dialog').showModal();
+  $('#account-display-name').focus();$('#account-display-name').select();
+};
+$('#account-rename-close').onclick=$('#account-rename-cancel').onclick=()=>$('#account-rename-dialog').close();
+$('#account-rename-form').onsubmit=async event=>{
+  event.preventDefault();
+  if(!currentUser||$('#account-rename-save').disabled)return;
+  const userId=currentUser.id;
+  $('#account-rename-save').disabled=true;$('#account-rename-error').textContent='';
+  try{
+    const result=await api('/api/auth/me',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#account-display-name').value.trim()})});
+    if(currentUser?.id!==userId)return;
+    currentUser=result.user;updateAccountName();$('#account-rename-dialog').close();$('#account-name').focus();
+  }catch(err){if(currentUser?.id===userId)$('#account-rename-error').textContent=err.message;}
+  finally{$('#account-rename-save').disabled=false;}
+};
+window.addEventListener('click',event=>{if(!$('#account-menu').contains(event.target))$('#account-menu').open=false;});
+$('#account-menu').onkeydown=event=>{if(event.key==='Escape'){$('#account-menu').open=false;$('#account-name').focus();}};
 async function startSession(){
   try{const state=await api('/api/auth/me');if(state.user){await enterSession(state.user);return;}
     showSignIn();const error=new URLSearchParams(location.search).get('authError');

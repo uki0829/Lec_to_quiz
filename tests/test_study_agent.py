@@ -23,6 +23,15 @@ class AgentAI(FakeAI):
         self.fail_plan = False
         self.bad_plan = False
         self.selected = []
+        self.chats = []
+
+    def chat_study(self, message, history, sources, teacher=None):
+        self.chats.append({'message': message, 'history': copy.deepcopy(history),
+                           'sources': copy.deepcopy(sources), 'teacher': teacher})
+        if getattr(self, 'fail_chat', False):
+            raise ValueError('Chat provider unavailable')
+        return {'text': 'Study agenda\n• Review the main concept.\n• Work through an example.',
+                'sourceIds': [sources[0]['id']] if sources else []}
 
     def plan_study(self, message, history, materials, previous):
         self.plans.append({'message': message, 'history': copy.deepcopy(history),
@@ -70,7 +79,7 @@ def agent(tmp_path):
         yield client, app, ai, cid, mid
 
 
-def send(client, cid, text='Quiz me', key='request-0001'):
+def send(client, cid, text='/quiz Quiz me', key='request-0001'):
     return client.post(f'/api/collections/{cid}/agent/messages', json={'message': text, 'requestId': key})
 
 
@@ -89,11 +98,11 @@ def test_agent_uses_rag_and_preserves_followup_settings(agent):
     assert ai.selected and {s['materialId'] for s in ai.selected[-1]} == {mid}
     assert client.get('/api/sources/'+first['set']['sources'][0]['id']).status_code == 200
     q = app.state.store.quiz(first['quizId'])
-    assert q['request']['submitted']['prompt'] == 'Quiz me'
+    assert q['request']['submitted']['prompt'] == '/quiz Quiz me'
     assert q['request']['submitted']['origin'] == 'agent'
     assert q['request']['resolved']['prompt'] == 'Practice gradient descent'
     assert q['request']['resolved']['reranking']['inputCount'] > 0
-    again = finish(client, app, cid, send(client, cid, 'Make these harder as flashcards', 'request-0002'))
+    again = finish(client, app, cid, send(client, cid, '/flashcards Make these harder', 'request-0002'))
     assert again['set']['format'] == 'flashcard'
     q2 = app.state.store.quiz(again['quizId'])
     assert q2['request']['parent_quiz_id'] == q['id']
@@ -119,9 +128,9 @@ def test_agent_resolves_unspecified_settings_on_server(agent, monkeypatch):
         result.update(count=4, difficulty='advanced', format='flashcard', buildOnPrevious=True)
         return result
     monkeypatch.setattr(ai, 'plan_study', explicit)
-    changed = finish(client, app, cid, send(client, cid, 'Four advanced flashcards', 'explicit-settings'))
+    changed = finish(client, app, cid, send(client, cid, '/flashcards Four advanced cards', 'explicit-settings'))
     monkeypatch.setattr(ai, 'plan_study', unspecified)
-    response = send(client, cid, 'More like these, harder', 'inherited-settings')
+    response = send(client, cid, '/flashcards More like these, harder', 'inherited-settings')
     params = app.state.store.job(response.json()['messages'][-1]['jobId'])['params']
     assert params['format'] == 'flashcard' and params['count'] == 4
     assert params['difficulty'] == 'advanced'
@@ -177,7 +186,7 @@ def test_agent_generation_failure_cancel_retry_and_deleted_set(agent):
     retry = client.post(f"/api/collections/{cid}/agent/messages/{failed['id']}/retry")
     ready = finish(client, app, cid, retry)
     assert ready['state'] == 'ready'
-    assert app.state.store.quiz(ready['quizId'])['request']['submitted']['prompt'] == 'Quiz me'
+    assert app.state.store.quiz(ready['quizId'])['request']['submitted']['prompt'] == '/quiz Quiz me'
     response = send(client, cid, key='request-cancel')
     pending = response.json()['messages'][-1]
     client.post('/api/jobs/'+pending['jobId']+'/cancel')
@@ -207,6 +216,7 @@ def test_agent_requires_account_and_collection_ownership(social):
     cid = collection(alice)
     assert bob.get(f'/api/collections/{cid}/agent').status_code == 404
     assert send(bob, cid).status_code == 404
+    assert send(bob, cid, 'Make an agenda.', 'private-chat').status_code == 404
     alice.post('/api/auth/logout')
     assert alice.get(f'/api/collections/{cid}/agent').status_code == 401
 
@@ -225,6 +235,76 @@ def test_agent_planner_uses_structured_contract(monkeypatch):
     assert 'Psychology lecture' in captured['content'][0]['text']
 
 
+@pytest.mark.parametrize('message', ['Create a study agenda for my lecture.', 'hello',
+                                   'Why does gradient descent work?', 'Create a quiz about memory.',
+                                   'Explain what /quiz means without running it.'])
+def test_normal_messages_reply_in_chat_without_generating(agent, message):
+    client, app, ai, cid, mid = agent
+    before = app.state.store.all('SELECT id FROM jobs')
+    response = send(client, cid, message)
+    reply = response.json()['messages'][-1]
+    assert reply['state'] == 'ready' and reply['chat']
+    assert reply['text'].startswith('Study agenda')
+    assert reply['jobId'] is None and reply['quizId'] is None and 'set' not in reply
+    assert reply['sources'][0]['id'] == app.state.store.sources(mid)[0]['id']
+    assert app.state.store.all('SELECT id FROM jobs') == before
+    assert not ai.plans
+    assert {s['materialId'] for s in ai.chats[-1]['sources']} == {mid}
+    duplicate = send(client, cid, message)
+    assert duplicate.json()['messageId'] == response.json()['messageId']
+    assert len(ai.chats) == 1
+    assert StudyAgent(app.state.store, app.state.engine).history(cid)[-1]['chat']
+
+
+def test_chat_history_empty_folder_and_source_validation(agent, monkeypatch):
+    client, app, ai, cid, mid = agent
+    empty = collection(client, 'Chat without uploads')
+    response = send(client, empty, 'Make a study agenda.')
+    reply = response.json()['messages'][-1]
+    assert reply['grounding'] == 'general' and reply['sources'] == []
+    response = send(client, empty, 'Make it shorter.', 'chat-followup')
+    assert ai.chats[-1]['history'][0]['text'] == 'Make a study agenda.'
+    assert not app.state.store.all("SELECT id FROM jobs WHERE kind='quiz'")
+    monkeypatch.setattr(ai, 'chat_study', lambda *a: {'text': 'Bad reference', 'sourceIds': ['another-users-source']})
+    response = send(client, cid, 'Explain my lecture.', 'bad-chat-reference')
+    assert response.json()['messages'][-1]['state'] == 'failed'
+    assert 'invalid lecture references' in response.json()['messages'][-1]['text']
+
+
+@pytest.mark.parametrize('command,expected', [('/quiz','mcq'),('/flashcards','flashcard'),
+    ('/calculation','calculation'),('/cheatsheet','cheatsheet')])
+def test_slash_command_controls_format_even_if_planner_disagrees(agent, monkeypatch, command, expected):
+    client, app, ai, cid, _ = agent
+    plan = ai.plan_study
+    def wrong_format(*args):
+        value = plan(*args);value['format'] = 'mcq';return value
+    monkeypatch.setattr(ai, 'plan_study', wrong_format)
+    response = send(client, cid, command+' Create practice about the lecture.')
+    reply = response.json()['messages'][-1]
+    assert reply['state'] == 'pending'
+    assert app.state.store.job(reply['jobId'])['params']['format'] == expected
+    assert not ai.chats
+
+
+def test_unknown_commands_do_not_trigger_generation(agent):
+    client, app, ai, cid, _ = agent
+    reply = send(client, cid, '/quizlet Create questions.').json()['messages'][-1]
+    assert reply['state'] == 'clarify' and '/flashcards' in reply['text']
+    assert not ai.plans and not ai.chats
+
+
+def test_chat_prompt_answers_agendas_and_does_not_request_formats(monkeypatch):
+    from schemas import AgentReply
+    captured = {}
+    monkeypatch.setattr(AI, 'structured', lambda self, system, content, schema: captured.update(system=system, content=content, schema=schema) or {})
+    AI().chat_study('Make an agenda', [], [{'id':'chunk', 'text':NOTES}])
+    assert captured['schema'] is AgentReply
+    assert 'Normal text NEVER creates a saved study set' in captured['system']
+    assert 'write that agenda now' in captured['system']
+    assert 'Do not ask the user to choose a quiz format' in captured['system']
+    assert 'chunk' in captured['content'][0]['text']
+
+
 @pytest.mark.parametrize('format_', ['mcq', 'flashcard', 'calculation', 'cheatsheet'])
 def test_agent_without_uploads_saves_general_practice_and_survives_restart(agent, monkeypatch, format_):
     from storage import Store
@@ -234,7 +314,8 @@ def test_agent_without_uploads_saves_general_practice_and_survives_restart(agent
     def choose(*args):
         result = plan(*args); result['format'] = format_; return result
     monkeypatch.setattr(ai, 'plan_study', choose)
-    message = finish(client, app, cid, send(client, cid, 'Practice my topic', 'empty-' + format_))
+    command = {'mcq':'quiz', 'flashcard':'flashcards', 'calculation':'calculation', 'cheatsheet':'cheatsheet'}[format_]
+    message = finish(client, app, cid, send(client, cid, '/'+command+' Practice my topic', 'empty-' + format_))
     assert message['state'] == 'ready', message
     assert message['set']['grounding'] == 'general' and message['set']['sources'] == []
     quiz = client.get('/api/quizzes/' + message['quizId']).json()

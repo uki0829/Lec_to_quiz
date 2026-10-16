@@ -1,12 +1,54 @@
-// The agent plans requests; the existing server pipeline retrieves lecture evidence.
+// Normal messages stay in chat; explicit slash commands create saved study sets.
 let agentMessages=[],agentFolder=null,agentSending=false,agentWatching=false,agentOwnsBusy=false;
 let agentLoadEpoch=0,agentPlanTimer=null,agentRenderKey='',agentOptionKey='';
 let agentRequestKey=null,agentRequestText=null;
+const agentCommands=[
+  {command:'/quiz',label:'Quiz',description:'Multiple-choice questions',icon:'clipboard-list'},
+  {command:'/flashcards',label:'Flashcards',description:'Flip to review',icon:'layers'},
+  {command:'/calculation',label:'Calculation',description:'Numerical practice',icon:'calculator'},
+  {command:'/cheatsheet',label:'Cheat sheet',description:'Lecture study guide',icon:'file-text'}
+];
+let agentCommandMatches=[],agentCommandIndex=0,agentCommandDismissed=false,agentCommandQuery='';
+function closeAgentCommands(){
+  $('#agent-command-menu').hidden=true;$('#agent-input').setAttribute('aria-expanded','false');
+}
+function chooseAgentCommand(position){
+  const choice=agentCommandMatches[position];if(!choice||$('#agent-input').disabled)return;
+  $('#agent-input').value=choice.command+' ';agentCommandDismissed=true;closeAgentCommands();
+  syncAgentState();$('#agent-input').focus();
+  $('#agent-input').setSelectionRange($('#agent-input').value.length,$('#agent-input').value.length);
+}
+function syncAgentCommands(){
+  const menu=$('#agent-command-menu'),input=$('#agent-input');
+  const match=input.value.match(/^\s*\/([a-z-]*)$/i);
+  if(!match||input.disabled||agentCommandDismissed){closeAgentCommands();return;}
+  const query=match[1].toLowerCase();
+  if(query!==agentCommandQuery)agentCommandIndex=0;
+  agentCommandQuery=query;
+  agentCommandMatches=agentCommands.filter(item=>item.command.slice(1).startsWith(query));
+  if(!agentCommandMatches.length){closeAgentCommands();return;}
+  agentCommandIndex=Math.min(agentCommandIndex,agentCommandMatches.length-1);
+  menu.innerHTML=agentCommandMatches.map((item,i)=>'<button type="button" role="menuitem" class="agent-command'+(i===agentCommandIndex?' is-active':'')+'" data-agent-command="'+i+'">'+flashIcon(item.icon)+'<span><strong>'+esc(item.label)+'</strong><small>'+esc(item.description)+'</small></span><code>'+esc(item.command)+'</code></button>').join('');
+  menu.querySelectorAll('[data-agent-command]').forEach(button=>{
+    button.onclick=()=>chooseAgentCommand(Number(button.dataset.agentCommand));
+    button.onkeydown=event=>{
+      if(event.key==='Escape'){event.preventDefault();agentCommandDismissed=true;closeAgentCommands();input.focus();return;}
+      if(event.key==='Tab'){agentCommandDismissed=true;closeAgentCommands();input.focus();return;}
+      if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+        event.preventDefault();const current=Number(button.dataset.agentCommand),length=agentCommandMatches.length;
+        agentCommandIndex=event.key==='Home'?0:event.key==='End'?length-1:(current+(event.key==='ArrowDown'?1:-1)+length)%length;
+        syncAgentCommands();menu.querySelectorAll('[data-agent-command]')[agentCommandIndex]?.focus();
+      }
+    };
+  });
+  menu.hidden=false;input.setAttribute('aria-expanded','true');
+}
 
 function resetAgentSession(){
   clearTimeout(agentPlanTimer);agentLoadEpoch++;
   agentMessages=[];agentFolder=null;agentRenderKey='';agentOptionKey='';agentRequestKey=null;agentRequestText=null;
   $('#agent-input').value='';$('#agent-messages').innerHTML='';$('#agent-error').textContent='';
+  agentCommandDismissed=false;closeAgentCommands();
 }
 function syncAgentState(){
   const rows=typeof collectionRows==='undefined'?[]:collectionRows;
@@ -27,6 +69,7 @@ function syncAgentState(){
   $('#agent-ready').textContent=ready?ready+' lecture'+(ready===1?'':'s')+' ready':'General knowledge available';
   document.querySelectorAll('[data-agent-suggestion]').forEach(b=>b.disabled=locked);
   if(typeof syncMenus==='function')syncMenus();
+  syncAgentCommands();
 }
 function renderAgentConversation(){
   const key=JSON.stringify(agentMessages);
@@ -35,7 +78,10 @@ function renderAgentConversation(){
     agentRenderKey=key;
     $('#agent-messages').innerHTML=agentMessages.map(m=>{
       const pending=['planning','pending'].includes(m.state),set=m.set;
-      let content='<p>'+mathHtml(pending?(m.stage||m.text):m.text)+'</p>';
+      let content='<p'+(m.chat?' data-no-translate':'')+'>'+mathHtml(pending?(m.stage||m.text):m.text)+'</p>';
+      if(m.chat&&m.sources?.length){
+        content+='<details class="agent-sources"><summary>Sources</summary>'+m.sources.map(s=>'<button class="agent-source" data-agent-source="'+esc(s.id)+'">'+flashIcon('file-text')+'<span>'+esc(s.name)+'<small>'+esc(s.locator)+'</small></span></button>').join('')+'</details>';
+      }
       if(set){
         if(set.grounding==='general')content+='<p class="tiny">General knowledge</p>';
         content+='<div class="agent-result"><span class="agent-result-kind">'+flashIcon(formatIcon(set.format))+esc(formatName(set.format))+' · '+set.count+' '+(set.format==='cheatsheet'?'sections':'questions')+'</span><h2>'+mathHtml(set.title)+'</h2><button class="primary" data-agent-open="'+esc(set.id)+'">'+(set.format==='cheatsheet'?'Open guide':'Start practice')+flashIcon('arrow-right')+'</button>'+
@@ -146,7 +192,22 @@ async function openAgentSet(id){
 $('#nav-agent').onclick=openStudyAgent;
 $('#agent-collection').onchange=async event=>{if(busy)return;try{await selectCollection(event.target.value);}catch(error){$('#agent-error').textContent=error.message;}};
 $('#agent-form').onsubmit=event=>{event.preventDefault();sendAgentMessage();};
-$('#agent-input').oninput=syncAgentState;
-$('#agent-input').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.repeat){event.preventDefault();sendAgentMessage();}};
+$('#agent-input').oninput=()=>{agentCommandDismissed=false;syncAgentState();};
+$('#agent-input').onkeydown=event=>{
+  if(event.isComposing||event.repeat)return;
+  if(!$('#agent-command-menu').hidden){
+    if(event.key==='Escape'){event.preventDefault();agentCommandDismissed=true;closeAgentCommands();return;}
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      event.preventDefault();agentCommandIndex=event.key==='ArrowDown'?0:agentCommandMatches.length-1;
+      syncAgentCommands();$('#agent-command-menu').querySelectorAll('[data-agent-command]')[agentCommandIndex]?.focus();return;
+    }
+    if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chooseAgentCommand(agentCommandIndex);return;}
+    if(event.key==='Tab'){agentCommandDismissed=true;closeAgentCommands();}
+  }
+  if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgentMessage();}
+};
+window.addEventListener('pointerdown',event=>{
+  if(event.target!==$('#agent-input')&&!$('#agent-command-menu').contains(event.target)){agentCommandDismissed=true;closeAgentCommands();}
+});
 $('#agent-add').onclick=()=>{if(!collectionId)$('#create-collection').click();else openUpload();};
 document.querySelectorAll('[data-agent-suggestion]').forEach(b=>b.onclick=()=>{$('#agent-input').value=b.dataset.agentSuggestion;syncAgentState();$('#agent-input').focus();});

@@ -49,6 +49,10 @@ class Credentials(BaseModel):
     name: str = Field(default='', max_length=80)
 
 
+class ProfileUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
 class Accounts:
     def __init__(self, store):
         self.store = store
@@ -117,6 +121,17 @@ class Accounts:
         @app.get('/api/auth/me')
         def me(request: Request):
             return {'user': self.session_user(request), 'googleConfigured': bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET'))}
+
+        @app.patch('/api/auth/me')
+        def rename(body: ProfileUpdate, request: Request):
+            user = self.session_user(request)
+            if not user:
+                raise HTTPException(401, 'Sign in to continue.')
+            name = body.name.strip()
+            if not name or any(ord(char) < 32 or ord(char) == 127 for char in name):
+                raise HTTPException(400, 'Enter a name using 1–80 characters.')
+            self.store.execute('UPDATE users SET name=? WHERE id=?', (name, user['id']))
+            return {'user': public_user(self.store.one('SELECT * FROM users WHERE id=?', (user['id'],)))}
 
         @app.post('/api/auth/register', status_code=201)
         def register(body: Credentials, request: Request):

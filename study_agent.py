@@ -1,5 +1,6 @@
-"""Conversational planning over the existing collection-scoped generation pipeline."""
+"""Folder-scoped conversation with explicit commands for saved study sets."""
 import json
+import re
 import time
 import uuid
 
@@ -7,7 +8,16 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from accounts import CURRENT_USER
-from schemas import AgentPlan
+from schemas import AgentPlan, AgentReply
+
+COMMANDS = {'quiz': 'mcq', 'mcq': 'mcq', 'flashcard': 'flashcard', 'flashcards': 'flashcard',
+            'calculation': 'calculation', 'calculations': 'calculation',
+            'cheatsheet': 'cheatsheet', 'cheat-sheet': 'cheatsheet'}
+
+
+def study_command(text):
+    match = re.match(r'^/([a-z-]+)(?=\s|$)', text.strip(), re.I)
+    return COMMANDS.get(match[1].lower()) if match else None
 
 
 class AgentRequest(BaseModel):
@@ -79,6 +89,15 @@ class StudyAgent:
             body = json.loads(row['body'])
             message = {'id': row['id'], 'role': row['role'], 'state': row['state'], 'text': body.get('text', ''),
                        'jobId': row['job_id'], 'quizId': row['quiz_id']}
+            if body.get('chat'):
+                sources = []
+                for sid in body.get('sourceIds', []):
+                    source = self.store.one('SELECT s.body FROM sources s JOIN material_collections mc '
+                        'ON mc.material_id=s.material_id WHERE s.id=? AND mc.collection_id=?', (sid, cid))
+                    if source:
+                        value = json.loads(source['body'])
+                        sources.append({'id': sid, 'name': value['name'], 'locator': value['locator']})
+                message.update(chat=True, sources=sources, grounding=body.get('grounding', 'general'))
             if row['job_id'] and row['state'] == 'pending':
                 job = self.store.job(row['job_id'])
                 if job:
@@ -141,6 +160,24 @@ class StudyAgent:
                         'difficulty': settings.get('difficulty', 'intermediate')}
                 materials = [{'name': self.store.material(mid)['title']} for mid in mids]
                 conversation = [{'role': m['role'], 'text': m['text'][:1600]} for m in history[-12:-2]]
+                command_format = study_command(text)
+                if not command_format:
+                    if text.startswith('/'):
+                        self.update(ident, 'clarify', {'text': 'Use /quiz, /flashcards, /calculation, or /cheatsheet to create a study set. Send any other question as normal text.'})
+                    else:
+                        sources = self.engine.retriever.search(cid, mids, text) if mids else []
+                        sources, _ = self.engine.reranker.rank(text, sources)
+                        teacher = self.engine.classroom.profile(CURRENT_USER.get()) if CURRENT_USER.get() else None
+                        reply = AgentReply.model_validate(self.engine.ai.chat_study(text, conversation, sources[:12], teacher))
+                        mapping = {s['id']: s for s in sources[:12]}
+                        if not reply.text.strip() or len(reply.text) > 16000 or not set(reply.sourceIds) <= mapping.keys():
+                            raise ValueError('The chat response was incomplete or had invalid lecture references. Please try again.')
+                        original_ids = list(dict.fromkeys(mapping[sid]['originalSourceId'] for sid in reply.sourceIds))
+                        with mutation_lock:
+                            require_collection(cid)
+                            self.update(ident, 'ready', {'text': reply.text, 'chat': True, 'sourceIds': original_ids,
+                                'grounding': 'lecture' if original_ids else 'general'})
+                    return {'messageId': ident, 'messages': self.history(cid)}
                 plan = AgentPlan.model_validate(self.engine.ai.plan_study(text, conversation, materials, previous_context))
                 if len(plan.message) > 2000 or len(plan.prompt) > 4000:
                     raise ValueError('The agent request was too long. Please shorten it.')
@@ -153,7 +190,7 @@ class StudyAgent:
                         require_collection(cid)
                         inherited = previous_context if plan.buildOnPrevious and previous else {}
                         params = {'collectionId': cid, 'prompt': plan.prompt,
-                                  'format': plan.format or inherited.get('format', 'mcq'),
+                                  'format': command_format,
                                   'count': plan.count or inherited.get('count', 6),
                                   'difficulty': plan.difficulty or inherited.get('difficulty', 'intermediate')}
                         if plan.buildOnPrevious and previous:

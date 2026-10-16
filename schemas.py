@@ -49,6 +49,11 @@ class AgentPlan(StrictModel):
     buildOnPrevious: bool
 
 
+class AgentReply(StrictModel):
+    text: str
+    sourceIds: list[str]
+
+
 class ClassroomReply(StrictModel):
     text: str
     takeaway: str

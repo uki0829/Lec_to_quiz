@@ -1,5 +1,6 @@
 """Bounded local media preparation and resumable background jobs."""
 import concurrent.futures
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -80,6 +81,22 @@ class Engine:
     def stage(self, job_id, label, done=0, total=0):
         self.check(job_id)
         self.store.update_job(job_id, stage=label, completed=done, total=total)
+
+    @contextmanager
+    def measure(self, job_id, step, attempt=None):
+        """Record elapsed work, including failed attempts, without prompt contents."""
+        started = time.perf_counter()
+        try:
+            yield
+        finally:
+            row = self.store.one('SELECT resolved FROM requests WHERE job_id=?', (job_id,))
+            if row:
+                resolved = json.loads(row['resolved'])
+                entry = {'step': step, 'seconds': round(time.perf_counter()-started, 3)}
+                if attempt is not None:
+                    entry['attempt'] = attempt
+                resolved['timings'] = [*resolved.get('timings', []), entry]
+                self.store.execute('UPDATE requests SET resolved=? WHERE job_id=?', (json.dumps(resolved), job_id))
 
     def run(self, job_id):
         job = self.store.job(job_id)
@@ -349,7 +366,9 @@ class Engine:
         feedback = ''
         for attempt in range(2):
             self.check(job_id)
-            raw = self.ai.generate_general(params, feedback)
+            self.stage(job_id, 'Refining your questions (2/2)' if attempt else 'Creating practice from your request', 1, 3)
+            with self.measure(job_id, 'generation', attempt+1):
+                raw = self.ai.generate_general(params, feedback)
             self.check(job_id)
             self.stage(job_id, 'Checking your study set', 2, 3)
             try:
@@ -360,7 +379,9 @@ class Engine:
                 if params.get('mistakePractice') and quiz['status'] == 'ready':
                     if any(near_repeat(q['prompt'], params.get('followupContext', {}).get('questions', [])) for q in quiz['questions']):
                         raise ValueError('Use a new scenario to test the selected mistake concepts, not a paraphrase.')
-                    review = self.ai.review_mistake_practice(quiz['questions'], params['mistakePractice']['questions'])
+                    self.stage(job_id, 'Checking mistake focus', 2, 3)
+                    with self.measure(job_id, 'focus_review', attempt+1):
+                        review = self.ai.review_mistake_practice(quiz['questions'], params['mistakePractice']['questions'])
                     self.check(job_id)
                     if review.get('status') != 'ready':
                         raise ValueError('Keep every question focused on the selected mistakes: ' + review.get('message', ''))
@@ -387,10 +408,19 @@ class Engine:
             query = params['retrievalQuery']
         elif params.get('followupContext'):
             query = params['followupContext']['request'] + '\nFollow-up: ' + query
-        sources = self.retriever.search(cid, mids, query, lambda: self.check(job_id)) if mids else []
-        if self.reranker.api_key and sources:
-            self.stage(job_id, "Ranking lecture passages", 1, 4)
-        sources, ranking = self.reranker.rank(query, sources, lambda: self.check(job_id))
+        with self.measure(job_id, 'retrieval'):
+            sources = self.retriever.mistake_sources(cid, mids, params['mistakePractice']['questions']) if params.get('mistakePractice') else []
+            reused = bool(sources)
+            if not reused:
+                sources = self.retriever.search(cid, mids, query, lambda: self.check(job_id)) if mids else []
+        if reused:
+            self.stage(job_id, 'Using the selected questions’ lecture evidence', 1, 4)
+            ranking = {'provider': 'saved_evidence', 'status': 'reused', 'inputCount': len(sources)}
+        else:
+            if self.reranker.api_key and sources:
+                self.stage(job_id, "Ranking lecture passages", 1, 4)
+            with self.measure(job_id, 'reranking'):
+                sources, ranking = self.reranker.rank(query, sources, lambda: self.check(job_id))
         self.check(job_id)
         # Recheck eligibility after the external request, including vector-cleanup/deletion races.
         sources = [s for s in sources if self.store.one(
@@ -402,20 +432,25 @@ class Engine:
         if request:
             resolved = json.loads(request['resolved'])
             self.store.execute('UPDATE requests SET resolved=? WHERE job_id=?',
-                               (json.dumps({**resolved, 'reranking': ranking}), job_id))
+                               (json.dumps({**resolved, 'reranking': ranking,
+                                   'retrievalMode': 'selected_mistake_evidence' if reused else 'semantic_search'}), job_id))
         self.store.execute('UPDATE requests SET snapshot=? WHERE job_id=?',
                            (json.dumps([{'chunkId': s['id'], 'sourceId': s['originalSourceId'], 'materialId': s['materialId']} for s in sources]), job_id))
         if not sources:
             if params.get('allowGeneral'):
                 return self.process_general(job_id, params, 'no_indexed_sources')
             return {'status': 'insufficient_source', 'message': 'No indexed lecture content is available. Add or index materials first.'}
-        self.stage(job_id, "Selecting relevant lecture sections", 1, 4)
-        selection_request = query
-        if params['format'] == 'calculation':
-            selection_request += ('\nStudy format: calculation. Select lecture concepts for new numerical '
-                                  'practice exercises. The generator may choose new functions and numerical '
-                                  'givens; the lecture need not contain the exact exercise or a worked example.')
-        selection = self.ai.select(selection_request, sources)
+        if reused:
+            selection = {'status': 'ready', 'sourceIds': [s['id'] for s in sources]}
+        else:
+            self.stage(job_id, "Selecting relevant lecture sections", 1, 4)
+            selection_request = query
+            if params['format'] == 'calculation':
+                selection_request += ('\nStudy format: calculation. Select lecture concepts for new numerical '
+                                      'practice exercises. The generator may choose new functions and numerical '
+                                      'givens; the lecture need not contain the exact exercise or a worked example.')
+            with self.measure(job_id, 'source_selection'):
+                selection = self.ai.select(selection_request, sources)
         self.check(job_id)
         if selection["status"] != "ready":
             if selection['status'] == 'insufficient_source' and params.get('allowGeneral'):
@@ -428,12 +463,13 @@ class Engine:
         chosen = [mapping[s] for s in dict.fromkeys(selected_ids)]
         if params['format'] == 'cheatsheet':
             return self.process_sheet(job_id, material_id, params)
-        self.stage(job_id, "Building your cheat sheet" if params['format'] == 'cheatsheet' else "Building your quiz", 2, 4)
         feedback = ""
         attempts = 3 if params.get('mistakePractice') else 2
         for attempt in range(attempts):
             self.check(job_id)
-            raw = self.ai.generate(params, chosen, feedback)
+            self.stage(job_id, f'Refining your questions ({attempt+1}/{attempts})' if attempt else 'Building your quiz', 2, 4)
+            with self.measure(job_id, 'generation', attempt+1):
+                raw = self.ai.generate(params, chosen, feedback)
             self.check(job_id)
             self.stage(job_id, "Checking source references" if params['format'] == 'cheatsheet' else "Checking answers and source references", 3, 4)
             try:
@@ -447,7 +483,8 @@ class Engine:
                     if any(re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', q['prompt']) for q in quiz['questions']):
                         raise ValueError('A question contains invalid control characters. Use standard LaTeX delimiters for all equations.')
                     self.stage(job_id, 'Checking mistake focus', 3, 4)
-                    review = self.ai.review_mistake_practice(quiz['questions'], params['mistakePractice']['questions'])
+                    with self.measure(job_id, 'focus_review', attempt+1):
+                        review = self.ai.review_mistake_practice(quiz['questions'], params['mistakePractice']['questions'])
                     self.check(job_id)
                     stored_request = self.store.one('SELECT resolved FROM requests WHERE job_id=?', (job_id,))
                     if stored_request:

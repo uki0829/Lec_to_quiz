@@ -39,6 +39,24 @@ def test_signin_sessions_and_hashes(social):
     assert alice.post('/api/auth/login',json={'email':'alice@example.test','password':'StudyDemo!123'}).status_code==200
 
 
+def test_rename_account_is_private_validated_and_persistent(social):
+    app, alice, bob = social
+    before = alice.get('/api/auth/me').json()['user']
+    renamed = alice.patch('/api/auth/me', json={'name': '  Hefeng 张  ', 'id': bob.get('/api/auth/me').json()['user']['id']})
+    assert renamed.status_code == 200
+    user = renamed.json()['user']
+    assert user['name'] == 'Hefeng 张'
+    assert user['id'] == before['id'] and user['email'] == before['email']
+    assert bob.get('/api/auth/me').json()['user']['name'] == 'Bob'
+    for name in ['', '   ', 'x' * 81, 'Name\nOther']:
+        assert alice.patch('/api/auth/me', json={'name': name}).status_code in (400, 422)
+    assert alice.get('/api/auth/me').json()['user']['name'] == 'Hefeng 张'
+    alice.post('/api/auth/logout')
+    assert alice.patch('/api/auth/me', json={'name': 'Anonymous'}).status_code == 401
+    result = alice.post('/api/auth/login', json={'email': 'alice@example.test', 'password': 'StudyDemo!123'})
+    assert result.json()['user']['name'] == 'Hefeng 张'
+
+
 def test_private_study_access_and_shared_progress(social):
     app,alice,bob=social;engine=app.state.engine
     mid=prepared_notes(alice,engine);quiz=generate(alice,engine,mid)

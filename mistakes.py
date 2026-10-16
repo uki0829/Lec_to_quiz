@@ -113,7 +113,8 @@ def register_mistake_routes(app, store, engine, create_quiz, request_model, requ
             practice = {'requestId': request.requestId, 'questionIds': ids, 'materialIds': mids,
                 'questions': [{'questionId': q['questionId'], 'prompt': q['prompt'][:1800],
                     'studentAnswer': str(q['studentAnswer'])[:1000] if q['studentAnswer'] is not None else None,
-                    'status': q['status'], 'sourceId': q['source'].get('id')} for q in focus]}
+                    'status': q['status'], 'sourceId': q['source'].get('id'),
+                    'sourceQuote': q['source'].get('quote', '')} for q in focus]}
             prompt = ('Practice my mistakes. Create new questions testing the concepts behind the selected '
                       'incorrect or skipped questions. Use different wording and examples. Keep the original '
                       'difficulty and provide useful explanations grounded in the lecture. '

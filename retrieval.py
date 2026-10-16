@@ -145,3 +145,32 @@ class Retriever:
             result = self.vectors().query(query_embeddings=[vector], ids=list(mapping), n_results=min(24, len(rows)), include=['distances'])
         # Recheck existence after any in-flight provider request.
         return [mapping[i] for i in result['ids'][0] if i in mapping and self.store.one('SELECT id FROM sources WHERE id=?', (mapping[i]['originalSourceId'],))]
+
+    def mistake_sources(self, cid, material_ids, questions):
+        """Reuse the exact indexed evidence of selected mistakes, or fall back to search.
+
+        SQLite still enforces collection, material snapshot, current embedding model,
+        and readiness. Require a matching quote for every selected question.
+        """
+        from schemas import normalize
+        if not material_ids or not questions or len(questions) > 12:
+            return []
+        source_ids = list(dict.fromkeys(q.get('sourceId') for q in questions if q.get('sourceId')))
+        if not source_ids or any(not q.get('sourceQuote', '').strip() for q in questions):
+            return []
+        mids, sids = ','.join('?' for _ in material_ids), ','.join('?' for _ in source_ids)
+        rows = self.store.all(
+            'SELECT c.body FROM chunks c JOIN sources s ON s.id=c.source_id '
+            'JOIN materials m ON m.id=c.material_id WHERE c.collection_id=? AND c.model=? '
+            f"AND c.indexed=1 AND m.status='ready' AND c.material_id IN ({mids}) "
+            f'AND c.source_id IN ({sids}) ORDER BY c.id', (cid, self.model, *material_ids, *source_ids))
+        chunks = [json.loads(row['body']) for row in rows]
+        chosen = {}
+        for question in questions:
+            quote = normalize(question['sourceQuote'])
+            match = next((s for s in chunks if s['originalSourceId'] == question.get('sourceId')
+                          and quote and quote in normalize(s['text'])), None)
+            if not match:
+                return []
+            chosen[match['id']] = match
+        return list(chosen.values())
