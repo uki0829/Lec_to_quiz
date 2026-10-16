@@ -49,6 +49,12 @@ class AgentPlan(StrictModel):
     buildOnPrevious: bool
 
 
+class ClassroomReply(StrictModel):
+    text: str
+    takeaway: str
+    sourceIds: list[str]
+
+
 class GeneratedQuestion(StrictModel):
     id: str
     type: Literal["mcq", "flashcard", "calculation"]

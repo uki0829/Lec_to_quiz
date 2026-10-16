@@ -147,6 +147,9 @@ class Groups:
                     db.execute('DELETE FROM shared_progress WHERE share_id IN (SELECT id FROM group_sets WHERE group_id=?)',(gid,))
                     db.execute('DELETE FROM group_sets WHERE group_id=?',(gid,))
                     db.execute('DELETE FROM study_groups WHERE id=?',(gid,))
+                    if getattr(self.accounts, 'agents', None):
+                        db.execute('DELETE FROM classroom_turns WHERE group_id=?',(gid,))
+                        db.execute('DELETE FROM classroom_vectors WHERE group_id=?',(gid,))
             return {'left':True,'groupId':gid,'ownerId':owner_id,'groupRemoved':successor is None,'deletedShareIds':shares}
 
         @app.get('/api/groups/{gid}')
@@ -171,8 +174,13 @@ class Groups:
                     raise HTTPException(403,'Only the group owner can remove shared sets.')
                 if not db.execute('SELECT id FROM group_sets WHERE id=? AND group_id=?',(sid,gid)).fetchone():
                     raise HTTPException(404,'Shared set not found.')
+                if db.execute("SELECT id FROM jobs WHERE kind='classroom' AND status IN ('queued','running') "
+                    "AND json_extract(params,'$.groupId')=? AND EXISTS (SELECT 1 FROM json_each(params,'$.sharedSnapshot') WHERE value=?)",(gid,sid)).fetchone():
+                    raise HTTPException(409,'Wait for classroom teaching to finish before removing this set.')
                 db.execute('DELETE FROM shared_progress WHERE share_id=?',(sid,))
                 db.execute('DELETE FROM group_sets WHERE id=?',(sid,))
+                if getattr(self.accounts, 'agents', None):
+                    db.execute('DELETE FROM classroom_vectors WHERE group_id=? AND source_id LIKE ?', (gid,sid+':%'))
             return {'deleted':True,'shareId':sid,'groupId':gid}
 
         @app.post('/api/groups/{gid}/share',status_code=201)

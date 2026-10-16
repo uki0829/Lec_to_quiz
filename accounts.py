@@ -60,6 +60,8 @@ class Accounts:
         return public_user(row) if row else None
 
     def login_response(self, user, redirect=False):
+        if getattr(self, 'agents', None):
+            self.agents.profile(user)
         token = secrets.token_urlsafe(32)
         self.store.execute('DELETE FROM user_sessions WHERE expires<?', (time.time(),))
         self.store.execute('INSERT INTO user_sessions VALUES(?,?,?)', (digest(token), user['id'], time.time()+7*86400))
@@ -85,6 +87,12 @@ class Accounts:
                 cid = row['collection_id'] if row else None
             elif kind == 'jobs':
                 row = self.store.job(ident)
+                if row and row['kind'] == 'classroom':
+                    params = row['params']
+                    if params.get('requesterId') != user['id'] or not self.store.one(
+                        'SELECT user_id FROM group_members WHERE group_id=? AND user_id=?', (params['groupId'],user['id'])):
+                        raise HTTPException(404, 'Classroom request not found.')
+                    return
                 cid = (row['params'].get('collectionId') or self.store.collection_for(row['material_id'])) if row else None
             elif kind == 'sources':
                 row = self.store.one('SELECT material_id FROM sources WHERE id=?', (ident,))

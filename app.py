@@ -27,6 +27,7 @@ from processing import Engine, duration, ffmpeg_path
 from storage import Store, uid, CURRENT_USER
 from accounts import Accounts
 from study_groups import Groups
+from classroom import Classroom
 from schemas import normalize
 
 ROOT = Path(__file__).resolve().parent
@@ -69,6 +70,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
     engine = Engine(store, ai or AI())
     accounts = Accounts(store)
     groups = Groups(store, accounts)
+    classroom = Classroom(store, engine, accounts, groups)
     mutation_lock = threading.RLock()
     study_agent = StudyAgent(store, engine)
 
@@ -120,6 +122,7 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
 
     accounts.routes(app)
     groups.routes(app)
+    classroom.routes(app, mutation_lock, run_jobs)
 
     @app.exception_handler(HTTPException)
     async def http_error(request, exc):
@@ -433,6 +436,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
         row = store.job(job_id)
         if not row:
             raise HTTPException(404, "Job not found.")
+        if row['kind'] == 'classroom':
+            raise HTTPException(400, 'Send a new request in the classroom to try again.')
         if row["status"] not in ("failed", "interrupted", "cancelled"):
             raise HTTPException(409, "Only stopped or failed jobs can be retried.")
         with mutation_lock:
@@ -466,6 +471,8 @@ def create_app(data_dir=None, ai=None, run_jobs=True, auth_required=True):
             resolved['collectionId'] = cid
             if allow_general:
                 resolved['allowGeneral'] = True
+                if CURRENT_USER.get():
+                    resolved['teacher'] = classroom.profile(CURRENT_USER.get())
             for field, default in [('format','mcq'), ('count',6), ('difficulty','intermediate')]:
                 resolved[field] = resolved.get(field, inherited.get(field, default))
             if resolved['format'] not in ('mcq','flashcard','calculation','cheatsheet') or resolved['count'] not in (4,6,8,10):

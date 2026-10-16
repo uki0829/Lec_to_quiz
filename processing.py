@@ -96,6 +96,8 @@ class Engine:
             elif job['kind'] == 'index':
                 self.retriever.index(job['material_id'], lambda: self.check(job_id), lambda *a: self.stage(job_id, *a))
                 result = {'materialId': job['material_id']}
+            elif job['kind'] == 'classroom':
+                result = self.classroom.process(job_id, job['params'])
             else:
                 result = self.process_quiz(job_id, job["material_id"], job["params"])
             self.check(job_id)

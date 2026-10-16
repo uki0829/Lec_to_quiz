@@ -92,6 +92,8 @@ At mobile widths, existing collections can be selected and the study creator wor
 
 ## Study agent
 
+Each account has a saved tutor profile: an original pixel avatar, name, and teaching style. Choose **My agent** in a group or **Customize my agent** in the personal Agent tab. Personal generation uses the signed-in student's selected private collection and saved follow-up context; profiles do not create separate model weights or unrestricted access to another account.
+
 Open **Agent** in the sidebar and enter a request such as “Create six questions about gradient descent.” Uploads are optional. Ready lectures in the selected folder are searched first; when no indexed material or relevant passage is available, the agent generates from general knowledge. These results are labelled **General knowledge**, have no lecture citations, and remain saved in the selected folder. If no folder exists, the first Send creates **Agent practice**. The agent supports multiple-choice quizzes, flashcards, numerical calculations, and cheat sheets. **Add materials** opens the upload flow.
 
 The model first translates the conversation into a structured generation request. Quizzes use the collection-scoped RAG pipeline: OpenAI embeddings and Chroma retrieval, optional Cohere reranking, source selection, generation, and validation. Agent cheat sheets check relevance before retaining whole-collection coverage. Missing sources or an insufficient-source selection can use general knowledge; ambiguous topics still request clarification, and provider failures remain retryable errors. General generation retains count, format, answer consistency, LaTeX structure, arithmetic, and repair checks, but does not claim source verification. Earlier chat messages provide context, not factual evidence. The standard upload-first creator continues to require lecture material.
@@ -234,3 +236,16 @@ Multiple-choice answers grade immediately. A correct response plays its existing
 Calculation prompts and worked steps use locally bundled KaTeX. Existing saved questions with double-escaped math delimiters render normally after refresh. New generation requests numerical givens and functions on standalone LaTeX equation lines, with the answer hidden until checking. Scalar numerical grading and source records remain unchanged.
 
 Each saved set has a Rename button. Renaming preserves its questions, request, sources, and practice progress. The top-left arrow slides the sidebar in or out and remembers the layout preference after refresh. The quiz Remove button is omitted from the current interface.
+
+
+## Collaborative pixel classroom
+
+Open a study group, select one or two member-owned tutors, enter a topic, and choose Discuss, Quiz, Flashcards, Calculation, or Cheat sheet. The selected teachers respond sequentially: the second receives the first response and can add another explanation or correction. Generated practice opens as a group-owned shared artifact; the group owner retains the existing drag-to-trash permission. Private quizzes and progress are not moved into the group.
+
+The classroom uses only study sets explicitly shared to that group, including their shared excerpts. It caches embeddings in SQLite keyed by group, source hash, and embedding model, ranks candidate passages by cosine similarity, optionally applies Cohere Rerank, and uses the existing model selection stage. Current membership and current shared rows determine eligibility on every request. Selecting another member's avatar never authorizes access to that member's private lectures or practice history. When no relevant shared material exists, the teachers use labelled general knowledge.
+
+Tutor roles use the configured OpenAI model with distinct saved teaching styles; agreement between roles is not independent fact checking. The generation step receives the teaching discussion as context, while cited shared passages remain the evidence. Structured answer/citation checks, numerical arithmetic checks, and one repair attempt remain enabled. Ambiguity and provider failures stay visible rather than silently producing unrelated content.
+
+Classroom jobs run through the background worker, with saved discussion history, cancellation, idempotent submission, and membership rechecks. Shared sets used by active teaching jobs cannot be removed until processing stops. An interrupted classroom request can be submitted again. Empty-group cleanup removes its classroom history and vector cache.
+
+Pixel occupants independently walk to bounded floor positions, reserve desks, sit to read and write, and move to the front during an actual teacher reply. The animations are illustrative, not measurements of student activity. Teacher selection remains stationary. Reduced-motion preferences disable roaming and animated poses. The original transparent avatar atlas, generation prompt, and provenance are in [source/art/agents/README.md](source/art/agents/README.md).

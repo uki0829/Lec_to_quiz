@@ -1,5 +1,15 @@
 # Verification record
 
+## Personal tutors and collaborative pixel classroom
+
+- Added per-account persisted avatar, name and teaching style. Private generation retains collection ownership and RAG; a member can select another tutor inside a group without gaining access to its owner’s private library or personal progress.
+- Two teacher-role calls use shared-content retrieval, with the second seeing the first response. Their discussion guides the subsequent generation step. Group-created artifacts are stored as shared sets and can be opened by group members with independent progress.
+- Backend fixtures cover profile isolation/persistence, member-only teacher selection, cross-account job privacy, idempotency, cancellation, source deletion races, embedding-cache reuse, cross-group isolation, invalid references, and all four generated formats. Existing tests continue to pass.
+- Live OpenAI checks in an isolated fixture library produced a two-teacher explanation, a four-question multiple-choice quiz, and four flashcards through the background worker. Records are in ignored data/classroom-live-check.json. These are successful workflow checks, not accuracy benchmarks.
+- Browser checks confirmed avatar-library rendering, two-teacher discussion, a stable selector while characters roam, and no horizontal overflow at 1440px and 390px. Movement checks cover floor bounds, desk occupancy, reading/writing pauses, teaching transitions, cleanup, and reduced motion.
+- Avatar atlas was generated with built-in imagegen, inspected for transparency, and saved under source/art/agents. Classroom furniture and motion are code-native.
+- Final validation: 179 Python tests and all frontend suites passed. The updated local server was restarted only after job/planning checks were idle, with a SQLite backup retained in data. Profile save/reload was checked in the browser using the isolated fixture library. Original private materials and progress were preserved.
+
 ## Vertical flashcard flip and yellow star
 
 - Flashcards use a two-phase vertical rotateX animation, swapping question/answer at the midpoint. Navigation cancels in-flight flips, repeated clicks cannot queue flips, and reduced-motion preferences switch faces immediately. Card dimensions and navigation remain fixed.

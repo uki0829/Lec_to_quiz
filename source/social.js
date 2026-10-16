@@ -20,6 +20,7 @@ function setAuthMode(mode){
 }
 async function enterSession(user){
   currentUser=user;
+  if(typeof resetClassroomSession==='function')resetClassroomSession();
   if(new URLSearchParams(location.search).has('authError'))history.replaceState(null,'','/');
   if(user.id==='demo-hefeng'){
     try{const legacy=localStorage.getItem('lecture-lab-state');if(legacy&&!localStorage.getItem(studyStateKey()))localStorage.setItem(studyStateKey(),legacy);localStorage.removeItem('lecture-lab-state');}catch{}
@@ -49,7 +50,7 @@ $('#sign-out').onclick=async()=>{
     $('#notes').value='';$('#composer-notes').value='';$('#request').value='';
     $('#summary').hidden=true;$('#study').hidden=true;$('#cheatsheet').hidden=true;$('#empty').hidden=false;$('#job-panel').hidden=true;
     for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
-    showSignIn();
+    if(typeof resetClassroomSession==='function')resetClassroomSession();showSignIn();
   }catch(err){message(err.message,true);}
 };
 $('#nav-home').onclick=()=>{showView('library');setLibraryTab('sets');saveSnapshot();};
@@ -63,6 +64,7 @@ async function showGroups(){
   }catch(err){$('#group-message').textContent=err.message;}
 }
 function setGroupDetail(open){
+  if(!open&&typeof closeClassroom==='function')closeClassroom();
   $('#groups-overview-header').hidden=open;$('#groups-description').hidden=open;
   $('#group-detail').hidden=!open;$('#group-list').hidden=open;
 }
@@ -99,7 +101,7 @@ async function openGroup(id){
     currentGroupId=id;currentGroupDetail=g;showView('groups');setGroupDetail(true);
     $('#group-title').textContent=g.name;$('#group-demo-label').hidden=!g.demo;$('#group-invite-code').value=g.invite_code;
     $('#group-members').innerHTML=g.members.map(m=>'<span class="member-chip"><i>'+esc(m.name.slice(0,1).toUpperCase())+'</i>'+esc(m.name)+(m.id===g.owner_id?' <small>Owner</small>':'')+(m.demo?' <small>Demo</small>':'')+'</span>').join('');
-    renderGroupSets(g);$('#group-message').textContent='';saveSnapshot();return true;
+    renderGroupSets(g);$('#group-message').textContent='';if(typeof openClassroom==='function')void openClassroom(g);saveSnapshot();return true;
   }catch(err){$('#group-message').textContent=err.message;return false;}
 }
 function renderGroupSets(g){

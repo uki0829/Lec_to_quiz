@@ -43,7 +43,7 @@ function renderAgentConversation(){
       }
       if(m.state==='failed')content+='<button class="secondary" data-agent-retry="'+esc(m.id)+'">Try again</button>';
       if(m.state==='pending'&&m.jobId)content+='<button class="quiet" data-agent-cancel="'+esc(m.jobId)+'">Cancel</button>';
-      return '<article class="agent-message '+(m.role==='user'?'from-user':'from-agent')+(pending?' is-pending':'')+'"><span class="agent-speaker">'+(m.role==='user'?'You':flashIcon('sparkles')+'Agent')+'</span>'+content+'</article>';
+      return '<article class="agent-message '+(m.role==='user'?'from-user':'from-agent')+(pending?' is-pending':'')+'"><span class="agent-speaker">'+(m.role==='user'?'You':typeof myAgent!=='undefined'&&myAgent?avatarHtml(myAgent)+esc(myAgent.name):flashIcon('sparkles')+'Agent')+'</span>'+content+'</article>';
     }).join('');
     $('#agent-messages').querySelectorAll('[data-agent-open]').forEach(b=>b.onclick=()=>openAgentSet(b.dataset.agentOpen));
     $('#agent-messages').querySelectorAll('[data-agent-source]').forEach(b=>b.onclick=()=>openSource(b.dataset.agentSource));
@@ -78,7 +78,7 @@ async function loadAgentConversation(){
 }
 async function openStudyAgent(){
   showView('agent');$('#agent-error').textContent='';
-  try{await loadAgentConversation();if(!busy)$('#agent-input').focus();saveSnapshot();}
+  try{if(typeof loadAgentProfile==='function')await loadAgentProfile();await loadAgentConversation();if(!busy)$('#agent-input').focus();saveSnapshot();}
   catch(error){$('#agent-error').textContent=error.message;}
 }
 async function watchAgentJob(id){
